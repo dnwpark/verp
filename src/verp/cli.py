@@ -234,6 +234,106 @@ def fmt_sync(ahead: int, behind: int) -> str:
     return ", ".join(parts)
 
 
+def extra_git_dirs(project_dir: Path, known_repos: list[str]) -> list[Path]:
+    known = set(known_repos)
+    extras: list[Path] = []
+    if not project_dir.is_dir():
+        return extras
+    for entry in sorted(project_dir.iterdir()):
+        if entry.name in known or not entry.is_dir():
+            continue
+        result = run(["git", "rev-parse", "--git-dir"], cwd=entry, check=False)
+        if result.returncode == 0:
+            extras.append(entry)
+    return extras
+
+
+def _branch_vs_primary_lines(wt: Path, primary: str) -> list[str]:
+    lines = []
+    sync = ahead_behind(f"origin/{primary}", "HEAD", wt)
+    if sync is not None:
+        ahead, behind = sync
+        if ahead:
+            lines.append(
+                f"{ahead} commit{'s' if ahead != 1 else ''} ahead of {primary}"
+            )
+        if behind:
+            lines.append(
+                f"{behind} commit{'s' if behind != 1 else ''} behind {primary}"
+            )
+    return lines
+
+
+def _uncommitted_lines(wt: Path) -> list[str]:
+    lines = []
+    result = run(["git", "status", "--porcelain"], cwd=wt, check=False)
+    if result.returncode == 0:
+        raw = result.stdout.splitlines()
+        changed = sum(1 for l in raw if l[:2] != "??")
+        untracked = sum(1 for l in raw if l[:2] == "??")
+        if changed:
+            lines.append(f"{changed} modified")
+        if untracked:
+            lines.append(f"{untracked} untracked")
+    return lines
+
+
+def _primary_vs_origin_lines(rp: Path, primary: str) -> list[str]:
+    lines = []
+    sync = ahead_behind(f"origin/{primary}", primary, rp)
+    if sync is not None:
+        ahead, behind = sync
+        if ahead and behind:
+            lines.append(f"{primary} is out of sync with origin")
+        elif behind:
+            lines.append(f"{primary} out of date, needs pull")
+        elif ahead:
+            lines.append(f"{primary} out of date, needs push")
+    return lines
+
+
+def _branch_vs_origin_lines(wt: Path, branch: str) -> list[str]:
+    sync = ahead_behind(f"origin/{branch}", "HEAD", wt)
+    if sync is None:
+        return ["branch not pushed to origin"]
+    ahead, behind = sync
+    if ahead and behind:
+        return ["branch is out of sync with origin"]
+    if ahead:
+        return ["branch out of date, needs push"]
+    if behind:
+        return ["branch out of date, needs pull"]
+    return []
+
+
+def _print_status_lines(
+    local_lines: list[str], remote_lines: list[str], indent: str
+) -> None:
+    for line in local_lines:
+        print(f"{indent}  {line}")
+    if remote_lines:
+        if local_lines:
+            print()
+        for line in remote_lines:
+            print(f"{indent}  {line}")
+
+
+def print_untracked_repo_status(path: Path, indent: str = "  ") -> None:
+    print(f"{indent}{path.name}")
+
+    branch_result = run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=path, check=False
+    )
+    if branch_result.returncode != 0:
+        print(f"{indent}  could not determine branch")
+        return
+    current_branch = branch_result.stdout.strip()
+
+    local_lines = _uncommitted_lines(path)
+    remote_lines = _branch_vs_origin_lines(path, current_branch)
+    _print_status_lines(local_lines, remote_lines, indent)
+
+
 def print_repo_status(
     repo: str, project_dir: Path, branch: str, indent: str = "  "
 ) -> None:
@@ -250,64 +350,11 @@ def print_repo_status(
         print(f"{indent}  primary branch unknown")
         return
 
-    local_lines = []
-    remote_lines = []
-
-    # Branch vs primary
-    sync = ahead_behind(f"origin/{primary}", "HEAD", wt)
-    if sync is not None:
-        ahead, behind = sync
-        if ahead:
-            local_lines.append(
-                f"{ahead} commit{'s' if ahead != 1 else ''} ahead of {primary}"
-            )
-        if behind:
-            local_lines.append(
-                f"{behind} commit{'s' if behind != 1 else ''} behind {primary}"
-            )
-
-    # Uncommitted changes
-    result = run(["git", "status", "--porcelain"], cwd=wt, check=False)
-    if result.returncode == 0:
-        lines = result.stdout.splitlines()
-        changed = sum(1 for l in lines if l[:2] != "??")
-        untracked = sum(1 for l in lines if l[:2] == "??")
-        if changed:
-            local_lines.append(f"{changed} modified")
-        if untracked:
-            local_lines.append(f"{untracked} untracked")
-
-    # Primary branch vs origin
-    sync = ahead_behind(f"origin/{primary}", primary, rp)
-    if sync is not None:
-        ahead, behind = sync
-        if ahead and behind:
-            remote_lines.append(f"{primary} is out of sync with origin")
-        elif behind:
-            remote_lines.append(f"{primary} out of date, needs pull")
-        elif ahead:
-            remote_lines.append(f"{primary} out of date, needs push")
-
-    # Worktree branch vs its origin counterpart
-    sync = ahead_behind(f"origin/{branch}", "HEAD", wt)
-    if sync is not None:
-        ahead, behind = sync
-        if ahead and behind:
-            remote_lines.append(f"branch is out of sync with origin")
-        elif ahead:
-            remote_lines.append(f"branch out of date, needs push")
-        elif behind:
-            remote_lines.append(f"branch out of date, needs pull")
-    else:
-        remote_lines.append(f"branch not pushed to origin")
-
-    for line in local_lines:
-        print(f"{indent}  {line}")
-    if remote_lines:
-        if local_lines:
-            print()
-        for line in remote_lines:
-            print(f"{indent}  {line}")
+    local_lines = _branch_vs_primary_lines(wt, primary) + _uncommitted_lines(wt)
+    remote_lines = _primary_vs_origin_lines(
+        rp, primary
+    ) + _branch_vs_origin_lines(wt, branch)
+    _print_status_lines(local_lines, remote_lines, indent)
 
 
 def cmd_status() -> int:
@@ -321,10 +368,18 @@ def cmd_status() -> int:
         err(f"no project named '{project_dir.name}'")
         return 1
 
-    for i, repo in enumerate(project_info.repos):
-        if i:
+    printed = 0
+    for repo in project_info.repos:
+        if printed:
             print()
         print_repo_status(repo, project_dir, project_info.branch)
+        printed += 1
+
+    for path in extra_git_dirs(project_dir, project_info.repos):
+        if printed:
+            print()
+        print_untracked_repo_status(path)
+        printed += 1
 
     return 0
 
@@ -471,12 +526,19 @@ def cmd_list() -> int:
         project_info = ProjectInfo(**json.loads(mf.read_text()))
         project_dir = Path(project_info.path)
         print(f"  {project_info.name}")
-        for j, repo in enumerate(project_info.repos):
-            if j:
+        printed = 0
+        for repo in project_info.repos:
+            if printed:
                 print()
             print_repo_status(
                 repo, project_dir, project_info.branch, indent="    "
             )
+            printed += 1
+        for path in extra_git_dirs(project_dir, project_info.repos):
+            if printed:
+                print()
+            print_untracked_repo_status(path, indent="    ")
+            printed += 1
 
     return 0
 
