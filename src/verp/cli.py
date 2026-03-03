@@ -2,19 +2,34 @@
 import argparse
 import argcomplete
 import json
-import os
 import shutil
 import subprocess
 import sys
 import textwrap
 from pathlib import Path
+from dataclasses import dataclass, asdict
+
+
+@dataclass
+class ProjectInfo:
+    name: str
+    path: str
+    branch: str
+    repos: list[str]
+
+
+@dataclass
+class Worktree:
+    project_dir: Path
+    repo: str
+    path: Path
 
 REPO_DIR = Path.home() / ".local" / "share" / "verp" / "repos"
 DATA_DIR = Path.home() / ".local" / "share" / "verp"
 BRANCH_PREFIX = "dnwpark"
 
 
-def run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess:
+def run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=cwd, check=check, capture_output=True, text=True)
 
 
@@ -26,16 +41,16 @@ def meta_path(name: str) -> Path:
     return DATA_DIR / f"{name}.json"
 
 
-def load_meta(name: str) -> dict:
+def load_project_info(name: str) -> ProjectInfo | None:
     p = meta_path(name)
     if p.exists():
-        return json.loads(p.read_text())
-    return {}
+        return ProjectInfo(**json.loads(p.read_text()))
+    return None
 
 
-def save_meta(name: str, meta: dict) -> None:
+def save_project_info(name: str, project_info: ProjectInfo) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    meta_path(name).write_text(json.dumps(meta, indent=2) + "\n")
+    meta_path(name).write_text(json.dumps(asdict(project_info), indent=2) + "\n")
 
 
 def cmd_new(name: str, repos: list[str]) -> int:
@@ -47,7 +62,7 @@ def cmd_new(name: str, repos: list[str]) -> int:
         return 1
 
     # Validate all repos exist before creating anything
-    repo_paths = []
+    repo_paths: list[Path] = []
     for repo in repos:
         rp = REPO_DIR / repo
         if not rp.is_dir():
@@ -62,7 +77,7 @@ def cmd_new(name: str, repos: list[str]) -> int:
     project_dir.mkdir(parents=True)
     print(f"created {project_dir}")
 
-    worktrees = []
+    worktrees: list[str] = []
     for repo, rp in zip(repos, repo_paths):
         worktree_dir = project_dir / repo
         result = run(
@@ -79,7 +94,7 @@ def cmd_new(name: str, repos: list[str]) -> int:
         print(f"  {repo}: worktree at {worktree_dir} (branch {branch})")
         worktrees.append(repo)
 
-    save_meta(name, {"name": name, "path": str(project_dir), "branch": branch, "repos": repos})
+    save_project_info(name, ProjectInfo(name=name, path=str(project_dir), branch=branch, repos=repos))
     return 0
 
 
@@ -101,15 +116,14 @@ def get_project_dir() -> Path | None:
     )
 
 
-def get_current_worktree() -> tuple[Path, str, Path] | None:
-    """Return (project_dir, repo, worktree_path) for the current git worktree."""
+def get_current_worktree() -> Worktree | None:
     result = run(["git", "rev-parse", "--show-toplevel"], check=False)
     if result.returncode != 0:
         return None
     wt = Path(result.stdout.strip()).resolve()
     for project_path in all_project_paths():
         if wt.parent.resolve() == project_path.resolve():
-            return project_path, wt.name, wt
+            return Worktree(project_dir=project_path, repo=wt.name, path=wt)
     return None
 
 
@@ -120,8 +134,11 @@ def cmd_add(repo: str) -> int:
         return 1
 
     name = project_dir.name
-    meta = load_meta(name)
-    if repo in meta.get("repos", []):
+    project_info = load_project_info(name)
+    if project_info is None:
+        err(f"no project named '{name}'")
+        return 1
+    if repo in project_info.repos:
         err(f"'{repo}' is already associated with project '{name}'")
         return 1
 
@@ -134,7 +151,7 @@ def cmd_add(repo: str) -> int:
         err(f"'{repo}' is not a git repository")
         return 1
 
-    branch = meta["branch"]
+    branch = project_info.branch
     worktree_dir = project_dir / repo
     result = run(
         ["git", "worktree", "add", "-b", branch, str(worktree_dir)],
@@ -146,8 +163,8 @@ def cmd_add(repo: str) -> int:
         return 1
 
     print(f"{repo}: worktree at {worktree_dir} (branch {branch})")
-    meta["repos"].append(repo)
-    save_meta(name, meta)
+    project_info.repos.append(repo)
+    save_project_info(name, project_info)
     return 0
 
 
@@ -155,7 +172,7 @@ def primary_branch(repo_path: Path) -> str | None:
     result = run(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd=repo_path, check=False)
     if result.returncode != 0:
         return None
-    return result.stdout.strip().removeprefix("origin/")
+    return str(result.stdout.strip().removeprefix("origin/"))
 
 
 def ahead_behind(ref_a: str, ref_b: str, cwd: Path) -> tuple[int, int] | None:
@@ -184,9 +201,12 @@ def cmd_status() -> int:
         err(f"not inside a verp project")
         return 1
 
-    meta = load_meta(project_dir.name)
-    branch = meta.get("branch", "?")
-    repos = meta.get("repos", [])
+    project_info = load_project_info(project_dir.name)
+    if project_info is None:
+        err(f"no project named '{project_dir.name}'")
+        return 1
+    branch = project_info.branch
+    repos = project_info.repos
 
     for i, repo in enumerate(repos):
         if i:
@@ -268,9 +288,12 @@ def cmd_delete() -> int:
         err("not inside a verp project")
         return 1
     name = project_dir.name
-    meta = load_meta(name)
-    branch = meta.get("branch", f"{BRANCH_PREFIX}/{name}")
-    repos = meta.get("repos", [])
+    project_info = load_project_info(name)
+    if project_info is None:
+        err(f"no project named '{name}'")
+        return 1
+    branch = project_info.branch
+    repos = project_info.repos
 
     warnings = []
 
@@ -338,29 +361,27 @@ def cmd_delete() -> int:
 
 
 def cmd_rebase(interactive: bool) -> int:
-    info = get_current_worktree()
-    if info is None:
+    worktree = get_current_worktree()
+    if worktree is None:
         err("not inside a verp project worktree")
         return 1
-    _, repo, wt = info
-    primary = primary_branch(REPO_DIR / repo)
+    primary = primary_branch(REPO_DIR / worktree.repo)
     if not primary:
-        err(f"could not determine primary branch for {repo}")
+        err(f"could not determine primary branch for {worktree.repo}")
         return 1
     cmd = ["git", "rebase"]
     if interactive:
         cmd.append("-i")
     cmd.append(f"origin/{primary}")
-    return subprocess.run(cmd, cwd=wt).returncode
+    return subprocess.run(cmd, cwd=worktree.path).returncode
 
 
 def cmd_push(force: bool) -> int:
-    info = get_current_worktree()
-    if info is None:
+    worktree = get_current_worktree()
+    if worktree is None:
         err("not inside a verp project worktree")
         return 1
-    _, _, wt = info
-    result = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=wt, check=False)
+    result = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=worktree.path, check=False)
     if result.returncode != 0:
         err("could not determine current branch")
         return 1
@@ -368,7 +389,7 @@ def cmd_push(force: bool) -> int:
     cmd = ["git", "push", "-u", "origin", branch]
     if force:
         cmd.append("--force-with-lease")
-    return subprocess.run(cmd, cwd=wt).returncode
+    return subprocess.run(cmd, cwd=worktree.path).returncode
 
 
 def cmd_list() -> int:
@@ -382,11 +403,11 @@ def cmd_list() -> int:
         return 0
 
     for mf in meta_files:
-        meta = json.loads(mf.read_text())
-        name = meta.get("name", mf.stem)
-        branch = meta.get("branch", "?")
-        repos = meta.get("repos", [])
-        project_dir = Path(meta["path"])
+        project_info = ProjectInfo(**json.loads(mf.read_text()))
+        name = project_info.name
+        branch = project_info.branch
+        repos = project_info.repos
+        project_dir = Path(project_info.path)
         print(f"{name}  [{branch}]")
         for repo in repos:
             wt = project_dir / repo
@@ -456,10 +477,10 @@ def cmd_pull() -> int:
     # Fetch in all project worktrees
     if DATA_DIR.exists():
         for mf in sorted(DATA_DIR.glob("*.json")):
-            meta = json.loads(mf.read_text())
-            name = meta.get("name", mf.stem)
-            project_dir = Path(meta["path"])
-            for repo in meta.get("repos", []):
+            project_info = ProjectInfo(**json.loads(mf.read_text()))
+            name = project_info.name
+            project_dir = Path(project_info.path)
+            for repo in project_info.repos:
                 wt = project_dir / repo
                 if not wt.is_dir():
                     err(f"worktree missing: {wt}")
@@ -504,7 +525,7 @@ def main() -> None:
     # Remove the subparsers group from help — the description above already lists them
     parser._action_groups = [g for g in parser._action_groups if g.title != "_commands_"]
 
-    def repo_completer(**kwargs):
+    def repo_completer(**kwargs: object) -> list[str]:
         return [d.name for d in REPO_DIR.iterdir() if d.is_dir()]
 
     p_new = sub.add_parser("new", help="create a new project")
@@ -524,7 +545,7 @@ def main() -> None:
     p_push.add_argument("-f", action="store_true")
 
     p_add = sub.add_parser("add", help="add a repo to the current project")
-    p_add.add_argument("repo", help="repo to add").completer = repo_completer
+    p_add.add_argument("repo", help="repo to add").completer = repo_completer  # type: ignore[attr-defined]
 
     p_repo = sub.add_parser("repo", help="manage repos")
     repo_sub = p_repo.add_subparsers(dest="repo_command", required=True)

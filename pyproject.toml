@@ -11,6 +11,9 @@ verp = "verp.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/verp"]
 
+[tool.mypy]
+strict = true
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
