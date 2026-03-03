@@ -24,13 +24,18 @@ class Worktree:
     repo: str
     path: Path
 
+
 REPO_DIR = Path.home() / ".local" / "share" / "verp" / "repos"
 DATA_DIR = Path.home() / ".local" / "share" / "verp"
 BRANCH_PREFIX = "dnwpark"
 
 
-def run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=cwd, check=check, capture_output=True, text=True)
+def run(
+    cmd: list[str], cwd: Path | None = None, check: bool = True
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd, cwd=cwd, check=check, capture_output=True, text=True
+    )
 
 
 def err(msg: str) -> None:
@@ -50,7 +55,9 @@ def load_project_info(name: str) -> ProjectInfo | None:
 
 def save_project_info(name: str, project_info: ProjectInfo) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    meta_path(name).write_text(json.dumps(asdict(project_info), indent=2) + "\n")
+    meta_path(name).write_text(
+        json.dumps(asdict(project_info), indent=2) + "\n"
+    )
 
 
 def cmd_new(name: str, repos: list[str]) -> int:
@@ -86,22 +93,42 @@ def cmd_new(name: str, repos: list[str]) -> int:
             check=False,
         )
         if result.returncode != 0:
-            err(f"failed to create worktree for '{repo}':\n{result.stderr.strip()}")
+            err(
+                f"failed to create worktree for '{repo}':\n{result.stderr.strip()}"
+            )
             for done_repo in worktrees:
-                run(["git", "worktree", "remove", "--force", str(project_dir / done_repo)], cwd=REPO_DIR / done_repo, check=False)
+                run(
+                    [
+                        "git",
+                        "worktree",
+                        "remove",
+                        "--force",
+                        str(project_dir / done_repo),
+                    ],
+                    cwd=REPO_DIR / done_repo,
+                    check=False,
+                )
             project_dir.rmdir()
             return 1
         print(f"  {repo}: worktree at {worktree_dir} (branch {branch})")
         worktrees.append(repo)
 
-    save_project_info(name, ProjectInfo(name=name, path=str(project_dir), branch=branch, repos=repos))
+    save_project_info(
+        name,
+        ProjectInfo(
+            name=name, path=str(project_dir), branch=branch, repos=repos
+        ),
+    )
     return 0
 
 
 def all_project_paths() -> list[Path]:
     if not DATA_DIR.exists():
         return []
-    return [Path(json.loads(mf.read_text())["path"]) for mf in DATA_DIR.glob("*.json")]
+    return [
+        Path(json.loads(mf.read_text())["path"])
+        for mf in DATA_DIR.glob("*.json")
+    ]
 
 
 def is_project_dir(path: Path) -> bool:
@@ -111,7 +138,11 @@ def is_project_dir(path: Path) -> bool:
 def get_project_dir() -> Path | None:
     project_paths = {p.resolve() for p in all_project_paths()}
     return next(
-        (p for p in [Path.cwd(), *Path.cwd().parents] if p.resolve() in project_paths),
+        (
+            p
+            for p in [Path.cwd(), *Path.cwd().parents]
+            if p.resolve() in project_paths
+        ),
         None,
     )
 
@@ -169,7 +200,11 @@ def cmd_add(repo: str) -> int:
 
 
 def primary_branch(repo_path: Path) -> str | None:
-    result = run(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd=repo_path, check=False)
+    result = run(
+        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        cwd=repo_path,
+        check=False,
+    )
     if result.returncode != 0:
         return None
     return str(result.stdout.strip().removeprefix("origin/"))
@@ -177,7 +212,11 @@ def primary_branch(repo_path: Path) -> str | None:
 
 def ahead_behind(ref_a: str, ref_b: str, cwd: Path) -> tuple[int, int] | None:
     """Returns (ahead, behind) of ref_b relative to ref_a. ahead = commits in B not in A."""
-    result = run(["git", "rev-list", "--left-right", "--count", f"{ref_a}...{ref_b}"], cwd=cwd, check=False)
+    result = run(
+        ["git", "rev-list", "--left-right", "--count", f"{ref_a}...{ref_b}"],
+        cwd=cwd,
+        check=False,
+    )
     if result.returncode != 0:
         return None
     left, right = result.stdout.strip().split()
@@ -232,16 +271,20 @@ def cmd_status() -> int:
         if sync is not None:
             ahead, behind = sync
             if ahead:
-                local_lines.append(f"{ahead} commit{'s' if ahead != 1 else ''} ahead of {primary}")
+                local_lines.append(
+                    f"{ahead} commit{'s' if ahead != 1 else ''} ahead of {primary}"
+                )
             if behind:
-                local_lines.append(f"{behind} commit{'s' if behind != 1 else ''} behind {primary}")
+                local_lines.append(
+                    f"{behind} commit{'s' if behind != 1 else ''} behind {primary}"
+                )
 
         # Uncommitted changes
         result = run(["git", "status", "--porcelain"], cwd=wt, check=False)
         if result.returncode == 0:
             lines = result.stdout.splitlines()
-            changed   = sum(1 for l in lines if l[:2] != '??')
-            untracked = sum(1 for l in lines if l[:2] == '??')
+            changed = sum(1 for l in lines if l[:2] != "??")
+            untracked = sum(1 for l in lines if l[:2] == "??")
             if changed:
                 local_lines.append(f"{changed} modified")
             if untracked:
@@ -306,11 +349,13 @@ def cmd_delete() -> int:
         result = run(["git", "status", "--porcelain"], cwd=wt, check=False)
         if result.returncode == 0 and result.stdout.strip():
             lines = result.stdout.splitlines()
-            changed   = sum(1 for l in lines if l[:2] != '??')
-            untracked = sum(1 for l in lines if l[:2] == '??')
+            changed = sum(1 for l in lines if l[:2] != "??")
+            untracked = sum(1 for l in lines if l[:2] == "??")
             parts = []
-            if changed:   parts.append(f"{changed} modified")
-            if untracked: parts.append(f"{untracked} untracked")
+            if changed:
+                parts.append(f"{changed} modified")
+            if untracked:
+                parts.append(f"{untracked} untracked")
             warnings.append(f"{repo}: uncommitted changes ({', '.join(parts)})")
 
         # Unpushed commits
@@ -320,7 +365,9 @@ def cmd_delete() -> int:
         else:
             ahead, _ = sync
             if ahead:
-                warnings.append(f"{repo}: {ahead} unpushed commit{'s' if ahead != 1 else ''}")
+                warnings.append(
+                    f"{repo}: {ahead} unpushed commit{'s' if ahead != 1 else ''}"
+                )
 
     # Non-repo entries in the project dir
     known = set(repos)
@@ -345,13 +392,21 @@ def cmd_delete() -> int:
         wt = project_dir / repo
         rp = REPO_DIR / repo
         if wt.is_dir():
-            result = run(["git", "worktree", "remove", "--force", str(wt)], cwd=rp, check=False)
+            result = run(
+                ["git", "worktree", "remove", "--force", str(wt)],
+                cwd=rp,
+                check=False,
+            )
             if result.returncode != 0:
-                err(f"failed to remove worktree for {repo}: {result.stderr.strip()}")
+                err(
+                    f"failed to remove worktree for {repo}: {result.stderr.strip()}"
+                )
                 return 1
         result = run(["git", "branch", "-D", branch], cwd=rp, check=False)
         if result.returncode != 0:
-            err(f"failed to delete branch {branch} in {repo}: {result.stderr.strip()}")
+            err(
+                f"failed to delete branch {branch} in {repo}: {result.stderr.strip()}"
+            )
             return 1
 
     shutil.rmtree(project_dir)
@@ -381,7 +436,11 @@ def cmd_push(force: bool) -> int:
     if worktree is None:
         err("not inside a verp project worktree")
         return 1
-    result = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=worktree.path, check=False)
+    result = run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=worktree.path,
+        check=False,
+    )
     if result.returncode != 0:
         err("could not determine current branch")
         return 1
@@ -434,11 +493,19 @@ def cmd_repo_list() -> int:
 
         primary = primary_branch(rp) or "?"
 
-        url_result = run(["git", "remote", "get-url", "origin"], cwd=rp, check=False)
+        url_result = run(
+            ["git", "remote", "get-url", "origin"], cwd=rp, check=False
+        )
         url = url_result.stdout.strip() if url_result.returncode == 0 else "?"
 
-        wt_result = run(["git", "worktree", "list", "--porcelain"], cwd=rp, check=False)
-        worktree_count = wt_result.stdout.count("worktree ") - 1 if wt_result.returncode == 0 else 0
+        wt_result = run(
+            ["git", "worktree", "list", "--porcelain"], cwd=rp, check=False
+        )
+        worktree_count = (
+            wt_result.stdout.count("worktree ") - 1
+            if wt_result.returncode == 0
+            else 0
+        )
 
         print(f"  {rp.name}")
         print(f"    branch:    {primary}")
@@ -521,9 +588,13 @@ def main() -> None:
         description=description,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    sub = parser.add_subparsers(dest="command", required=True, title="_commands_")
+    sub = parser.add_subparsers(
+        dest="command", required=True, title="_commands_"
+    )
     # Remove the subparsers group from help — the description above already lists them
-    parser._action_groups = [g for g in parser._action_groups if g.title != "_commands_"]
+    parser._action_groups = [
+        g for g in parser._action_groups if g.title != "_commands_"
+    ]
 
     def repo_completer(**kwargs: object) -> list[str]:
         return [d.name for d in REPO_DIR.iterdir() if d.is_dir()]
@@ -536,12 +607,18 @@ def main() -> None:
     sub.add_parser("pull", help="pull repos and fetch worktrees")
     sub.add_parser("status", help="show git status of current project")
 
-    sub.add_parser("delete", help="delete the current project and its worktrees")
+    sub.add_parser(
+        "delete", help="delete the current project and its worktrees"
+    )
 
-    p_rebase = sub.add_parser("rebase", help="rebase current worktree onto primary branch")
+    p_rebase = sub.add_parser(
+        "rebase", help="rebase current worktree onto primary branch"
+    )
     p_rebase.add_argument("-i", "--interactive", action="store_true")
 
-    p_push = sub.add_parser("push", help="push current worktree branch to origin")
+    p_push = sub.add_parser(
+        "push", help="push current worktree branch to origin"
+    )
     p_push.add_argument("-f", action="store_true")
 
     p_add = sub.add_parser("add", help="add a repo to the current project")

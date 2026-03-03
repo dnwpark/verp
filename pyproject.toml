@@ -11,6 +11,12 @@ verp = "verp.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/verp"]
 
+[dependency-groups]
+dev = ["black", "mypy"]
+
+[tool.black]
+line-length = 80
+
 [tool.mypy]
 strict = true
 
