@@ -1,0 +1,16 @@
+[project]
+name = "verp"
+version = "0.1.0"
+description = "Project worktree manager"
+requires-python = ">=3.11"
+dependencies = ["argcomplete"]
+
+[project.scripts]
+verp = "verp.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/verp"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
