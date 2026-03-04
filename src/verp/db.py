@@ -1,4 +1,5 @@
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,6 +15,8 @@ class ProjectInfo:
 DATA_DIR = Path.home() / ".local" / "share" / "verp"
 DB_PATH = DATA_DIR / "verp.db"
 
+SCHEMA_VERSION = 1
+
 
 def _db() -> sqlite3.Connection:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -23,26 +26,39 @@ def _db() -> sqlite3.Connection:
     return conn
 
 
+def _migrate_to_v1(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS projects (
+            name TEXT PRIMARY KEY,
+            path TEXT NOT NULL,
+            branch TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS project_repos (
+            project_name TEXT NOT NULL
+                REFERENCES projects(name) ON DELETE CASCADE,
+            repo TEXT NOT NULL,
+            PRIMARY KEY (project_name, repo)
+        )
+    """)
+
+
+_MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
+    1: _migrate_to_v1,
+}
+
+
 def init_db() -> None:
-    if DB_PATH.exists():
-        return
     conn = _db()
-    with conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS projects (
-                name TEXT PRIMARY KEY,
-                path TEXT NOT NULL,
-                branch TEXT NOT NULL
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS project_repos (
-                project_name TEXT NOT NULL
-                    REFERENCES projects(name) ON DELETE CASCADE,
-                repo TEXT NOT NULL,
-                PRIMARY KEY (project_name, repo)
-            )
-        """)
+    current = conn.execute("PRAGMA user_version").fetchone()[0]
+    if current >= SCHEMA_VERSION:
+        conn.close()
+        return
+    for version in range(current + 1, SCHEMA_VERSION + 1):
+        with conn:
+            _MIGRATIONS[version](conn)
+        conn.execute(f"PRAGMA user_version = {version}")
     conn.close()
 
 
