@@ -234,7 +234,7 @@ def cmd_delete() -> int:
                     f"{repo}: {ahead} unpushed commit{'s' if ahead != 1 else ''}"
                 )
 
-    known = set(repos)
+    known = set(repos) | {".claude"}
     for entry in project_dir.iterdir():
         if entry.name not in known:
             kind = "directory" if entry.is_dir() else "file"
