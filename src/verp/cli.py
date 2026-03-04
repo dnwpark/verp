@@ -42,7 +42,7 @@ from verp.git import (
     worktree_remove,
 )
 from verp.agent import clear_agent, format_age, list_agents
-from verp.project import upgrade_project
+from verp.project import setup_new, upgrade_project
 from verp.status import console, print_repo_status, print_untracked_repo_status
 
 BRANCH_PREFIX = "dnwpark"
@@ -115,16 +115,15 @@ def cmd_new(name: str, repos: list[str]) -> int:
         print(f"  {repo}: worktree at {worktree_dir} (branch {branch})")
         worktrees.append(repo)
 
-    add_project(
-        name,
-        ProjectInfo(
-            name=name,
-            path=str(project_dir),
-            branch=branch,
-            repos=repos,
-            version=SCHEMA_VERSION,
-        ),
+    project_info = ProjectInfo(
+        name=name,
+        path=str(project_dir),
+        branch=branch,
+        repos=repos,
+        version=SCHEMA_VERSION,
     )
+    add_project(name, project_info)
+    setup_new(project_info)
     return 0
 
 
