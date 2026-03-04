@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from verp.db import (
+    SCHEMA_VERSION,
     ProjectInfo,
     add_project,
     add_repo_to_project,
@@ -40,6 +41,7 @@ from verp.git import (
     worktree_count,
     worktree_remove,
 )
+from verp.project import upgrade_project
 from verp.status import console, print_repo_status, print_untracked_repo_status
 
 BRANCH_PREFIX = "dnwpark"
@@ -115,7 +117,11 @@ def cmd_new(name: str, repos: list[str]) -> int:
     add_project(
         name,
         ProjectInfo(
-            name=name, path=str(project_dir), branch=branch, repos=repos
+            name=name,
+            path=str(project_dir),
+            branch=branch,
+            repos=repos,
+            version=SCHEMA_VERSION,
         ),
     )
     return 0
@@ -388,6 +394,8 @@ def cmd_pull() -> int:
 
 def main() -> None:
     init_db()
+    for project_info in all_project_infos():
+        upgrade_project(project_info)
     description = textwrap.dedent("""\
         global:
           new <name> [repos...]    create a new project in the current directory
