@@ -1,8 +1,43 @@
+import shutil
+import sqlite3
 from collections.abc import Callable
+from pathlib import Path
 
 from verp.db import SCHEMA_VERSION, ProjectInfo, set_project_version
 
-_MIGRATIONS: dict[int, Callable[[ProjectInfo], None]] = {}
+_VERSIONS_DIR = Path(__file__).parent / "_versions"
+
+
+def _migration_v3(project_info: ProjectInfo) -> None:
+    project_dir = Path(project_info.path)
+    claude_dir = project_dir / ".claude"
+    hooks_dir = claude_dir / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+
+    v3 = _VERSIONS_DIR / "3"
+
+    shutil.copy2(v3 / "claude_settings.json", claude_dir / "settings.json")
+
+    dst = hooks_dir / "track.py"
+    shutil.copy2(v3 / "track.py", dst)
+    dst.chmod(0o755)
+
+    conn = sqlite3.connect(claude_dir / "verp.db")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS agents ("
+        "    session_id TEXT PRIMARY KEY,"
+        "    status     TEXT NOT NULL,"
+        "    tool       TEXT,"
+        "    updated_at INTEGER NOT NULL"
+        ")"
+    )
+    conn.commit()
+    conn.close()
+
+
+_MIGRATIONS: dict[int, Callable[[ProjectInfo], None]] = {
+    3: _migration_v3,
+}
 
 
 def upgrade_project(project_info: ProjectInfo) -> None:

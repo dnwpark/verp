@@ -41,6 +41,7 @@ from verp.git import (
     worktree_count,
     worktree_remove,
 )
+from verp.agent import clear_agent, format_age, list_agents
 from verp.project import upgrade_project
 from verp.status import console, print_repo_status, print_untracked_repo_status
 
@@ -392,6 +393,40 @@ def cmd_pull() -> int:
     return rc
 
 
+def _status_color(status: str) -> str:
+    if status == "working":
+        return "green"
+    return "dark_orange"
+
+
+def cmd_agent_list() -> int:
+    agents = list_agents(all_project_infos())
+    if not agents:
+        print("no agents")
+        return 0
+    for agent in agents:
+        sid = agent.session_id[:8]
+        color = _status_color(agent.status)
+        status = agent.status
+        if agent.tool:
+            status = f"{status} ({agent.tool})"
+        console.print(
+            f"  [bold]{sid}[/bold]  {agent.project}"
+            f"  [{color}]{status}[/{color}]"
+            f"  [grey70]{format_age(agent.updated_at)}[/grey70]"
+        )
+    return 0
+
+
+def cmd_agent_clear(session_id: str) -> int:
+    found = clear_agent(session_id, all_project_infos())
+    if not found:
+        err(f"no agent matching '{session_id}'")
+        return 1
+    print(f"cleared {session_id}")
+    return 0
+
+
 def main() -> None:
     init_db()
     for project_info in all_project_infos():
@@ -402,6 +437,7 @@ def main() -> None:
           list                     list all projects
           pull                     pull repos and fetch worktrees
           repo                     manage git repos
+          agent                    manage agents
 
         project:
           status                   show git status of each worktree
@@ -461,6 +497,12 @@ def main() -> None:
     p_repo_clone = repo_sub.add_parser("clone", help="clone a repo")
     p_repo_clone.add_argument("url", help="git URL to clone")
 
+    p_agent = sub.add_parser("agent", help="manage agents")
+    agent_sub = p_agent.add_subparsers(dest="agent_command", required=True)
+    agent_sub.add_parser("list", help="list all agents")
+    p_agent_clear = agent_sub.add_parser("clear", help="clear an agent entry")
+    p_agent_clear.add_argument("id", help="session ID prefix")
+
     argcomplete.autocomplete(parser, always_complete_options=False)
     args = parser.parse_args()
 
@@ -485,3 +527,8 @@ def main() -> None:
             sys.exit(cmd_repo_list())
         elif args.repo_command == "clone":
             sys.exit(cmd_repo_clone(args.url))
+    elif args.command == "agent":
+        if args.agent_command == "list":
+            sys.exit(cmd_agent_list())
+        elif args.agent_command == "clear":
+            sys.exit(cmd_agent_clear(args.id))

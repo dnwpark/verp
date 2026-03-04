@@ -16,7 +16,7 @@ class ProjectInfo:
 DATA_DIR = Path.home() / ".local" / "share" / "verp"
 DB_PATH = DATA_DIR / "verp.db"
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _db() -> sqlite3.Connection:
@@ -54,6 +54,7 @@ def _migrate_to_v2(conn: sqlite3.Connection) -> None:
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
+    3: lambda conn: None,
 }
 
 
