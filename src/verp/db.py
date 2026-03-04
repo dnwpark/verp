@@ -25,7 +25,7 @@ class AgentInfo:
 DATA_DIR = Path.home() / ".local" / "share" / "verp"
 DB_PATH = DATA_DIR / "verp.db"
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def _db() -> sqlite3.Connection:
@@ -72,12 +72,17 @@ def _migrate_to_v4(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migrate_to_v6(conn: sqlite3.Connection) -> None:
+    conn.execute("UPDATE agents SET updated_at = updated_at * 1000")
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
     3: lambda conn: None,
     4: _migrate_to_v4,
     5: lambda conn: None,
+    6: _migrate_to_v6,
 }
 
 
@@ -259,10 +264,12 @@ def get_project_name_by_path(path: Path) -> str | None:
 
 
 def upsert_agent(
-    session_id: str, project_name: str | None, status: str, tool: str | None
+    session_id: str,
+    project_name: str | None,
+    status: str,
+    tool: str | None,
+    timestamp: int,
 ) -> None:
-    import time
-
     conn = _db()
     with conn:
         conn.execute(
@@ -271,8 +278,9 @@ def upsert_agent(
             " ON CONFLICT(session_id) DO UPDATE SET"
             "     status = excluded.status,"
             "     tool = excluded.tool,"
-            "     updated_at = excluded.updated_at",
-            (session_id, project_name, status, tool, int(time.time())),
+            "     updated_at = excluded.updated_at"
+            " WHERE excluded.updated_at >= agents.updated_at",
+            (session_id, project_name, status, tool, timestamp),
         )
     conn.close()
 

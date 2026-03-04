@@ -432,14 +432,14 @@ def cmd_agent_clear(session_id: str) -> int:
 
 
 def cmd_internal_agent_event(
-    session_id: str, project_dir: str, status: str, tool: str | None
+    session_id: str, project_dir: str, status: str, tool: str, timestamp: int
 ) -> int:
     project_name = (
         get_project_name_by_path(Path(project_dir)) if project_dir else None
     )
     if project_name is None:
         return 0
-    upsert_agent(session_id, project_name, status, tool or None)
+    upsert_agent(session_id, project_name, status, tool or None, timestamp)
     return 0
 
 
@@ -532,7 +532,8 @@ def main() -> None:
     p_agent_event.add_argument("session_id")
     p_agent_event.add_argument("project_dir")
     p_agent_event.add_argument("status")
-    p_agent_event.add_argument("tool", nargs="?", default=None)
+    p_agent_event.add_argument("tool")
+    p_agent_event.add_argument("timestamp", type=int)
     p_agent_remove = internal_sub.add_parser("agent_remove")
     p_agent_remove.add_argument("session_id")
 
@@ -569,7 +570,11 @@ def main() -> None:
         if args.internal_command == "agent_event":
             sys.exit(
                 cmd_internal_agent_event(
-                    args.session_id, args.project_dir, args.status, args.tool
+                    args.session_id,
+                    args.project_dir,
+                    args.status,
+                    args.tool,
+                    args.timestamp,
                 )
             )
         elif args.internal_command == "agent_remove":
