@@ -1,24 +1,48 @@
 #!/usr/bin/env python3
 import argparse
 import argcomplete
-import json
 import shutil
-import subprocess
 import sys
 import textwrap
+from dataclasses import dataclass
 from pathlib import Path
-from dataclasses import dataclass, asdict
-from rich.console import Console
 
-console = Console()
+from verp.db import (
+    ProjectInfo,
+    add_project,
+    add_repo_to_project,
+    all_project_infos,
+    delete_project,
+    get_project,
+    get_project_branch,
+    init_db,
+    is_project_dir,
+    is_repo_in_project,
+    project_exists,
+)
+from verp.git import (
+    REPO_DIR,
+    ahead_behind,
+    branch_delete,
+    clone,
+    current_branch,
+    extra_git_dirs,
+    fetch,
+    is_git_repo,
+    primary_branch,
+    pull,
+    push,
+    rebase,
+    remote_url,
+    run,
+    worktree_add,
+    worktree_changes,
+    worktree_count,
+    worktree_remove,
+)
+from verp.status import console, print_repo_status, print_untracked_repo_status
 
-
-@dataclass
-class ProjectInfo:
-    name: str
-    path: str
-    branch: str
-    repos: list[str]
+BRANCH_PREFIX = "dnwpark"
 
 
 @dataclass
@@ -28,39 +52,26 @@ class Worktree:
     path: Path
 
 
-REPO_DIR = Path.home() / ".local" / "share" / "verp" / "repos"
-DATA_DIR = Path.home() / ".local" / "share" / "verp"
-BRANCH_PREFIX = "dnwpark"
-
-
-def run(
-    cmd: list[str], cwd: Path | None = None, check: bool = True
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        cmd, cwd=cwd, check=check, capture_output=True, text=True
-    )
-
-
 def err(msg: str) -> None:
     print(f"error: {msg}", file=sys.stderr)
 
 
-def meta_path(name: str) -> Path:
-    return DATA_DIR / f"{name}.json"
-
-
-def load_project_info(name: str) -> ProjectInfo | None:
-    p = meta_path(name)
-    if p.exists():
-        return ProjectInfo(**json.loads(p.read_text()))
+def get_current_project_dir() -> Path | None:
+    for p in [Path.cwd(), *Path.cwd().parents]:
+        if is_project_dir(p):
+            return p
     return None
 
 
-def save_project_info(name: str, project_info: ProjectInfo) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    meta_path(name).write_text(
-        json.dumps(asdict(project_info), indent=2) + "\n"
-    )
+def get_current_worktree() -> Worktree | None:
+    result = run(["git", "rev-parse", "--show-toplevel"], check=False)
+    if result.returncode != 0:
+        return None
+    wt = Path(result.stdout.strip()).resolve()
+    project_dir = wt.parent
+    if is_project_dir(project_dir):
+        return Worktree(project_dir=project_dir, repo=wt.name, path=wt)
+    return None
 
 
 def cmd_new(name: str, repos: list[str]) -> int:
@@ -78,8 +89,7 @@ def cmd_new(name: str, repos: list[str]) -> int:
         if not rp.is_dir():
             err(f"repo '{repo}' not found in {REPO_DIR}")
             return 1
-        result = run(["git", "rev-parse", "--git-dir"], cwd=rp, check=False)
-        if result.returncode != 0:
+        if not is_git_repo(rp):
             err(f"'{repo}' is not a git repository")
             return 1
         repo_paths.append(rp)
@@ -90,33 +100,19 @@ def cmd_new(name: str, repos: list[str]) -> int:
     worktrees: list[str] = []
     for repo, rp in zip(repos, repo_paths):
         worktree_dir = project_dir / repo
-        result = run(
-            ["git", "worktree", "add", "-b", branch, str(worktree_dir)],
-            cwd=rp,
-            check=False,
-        )
+        result = worktree_add(rp, branch, worktree_dir)
         if result.returncode != 0:
             err(
                 f"failed to create worktree for '{repo}':\n{result.stderr.strip()}"
             )
             for done_repo in worktrees:
-                run(
-                    [
-                        "git",
-                        "worktree",
-                        "remove",
-                        "--force",
-                        str(project_dir / done_repo),
-                    ],
-                    cwd=REPO_DIR / done_repo,
-                    check=False,
-                )
+                worktree_remove(REPO_DIR / done_repo, project_dir / done_repo)
             project_dir.rmdir()
             return 1
         print(f"  {repo}: worktree at {worktree_dir} (branch {branch})")
         worktrees.append(repo)
 
-    save_project_info(
+    add_project(
         name,
         ProjectInfo(
             name=name, path=str(project_dir), branch=branch, repos=repos
@@ -125,251 +121,49 @@ def cmd_new(name: str, repos: list[str]) -> int:
     return 0
 
 
-def all_project_paths() -> list[Path]:
-    if not DATA_DIR.exists():
-        return []
-    return [
-        Path(json.loads(mf.read_text())["path"])
-        for mf in DATA_DIR.glob("*.json")
-    ]
-
-
-def is_project_dir(path: Path) -> bool:
-    return path.resolve() in {p.resolve() for p in all_project_paths()}
-
-
-def get_project_dir() -> Path | None:
-    project_paths = {p.resolve() for p in all_project_paths()}
-    return next(
-        (
-            p
-            for p in [Path.cwd(), *Path.cwd().parents]
-            if p.resolve() in project_paths
-        ),
-        None,
-    )
-
-
-def get_current_worktree() -> Worktree | None:
-    result = run(["git", "rev-parse", "--show-toplevel"], check=False)
-    if result.returncode != 0:
-        return None
-    wt = Path(result.stdout.strip()).resolve()
-    for project_path in all_project_paths():
-        if wt.parent.resolve() == project_path.resolve():
-            return Worktree(project_dir=project_path, repo=wt.name, path=wt)
-    return None
-
-
 def cmd_add(repo: str) -> int:
-    project_dir = get_project_dir()
+    project_dir = get_current_project_dir()
     if project_dir is None:
-        err(f"not inside a verp project")
+        err("not inside a verp project")
         return 1
 
     name = project_dir.name
-    project_info = load_project_info(name)
-    if project_info is None:
+    if not project_exists(name):
         err(f"no project named '{name}'")
         return 1
-    if repo in project_info.repos:
+
+    if is_repo_in_project(name, repo):
         err(f"'{repo}' is already associated with project '{name}'")
         return 1
+
+    branch = get_project_branch(name) or ""
 
     rp = REPO_DIR / repo
     if not rp.is_dir():
         err(f"repo '{repo}' not found in {REPO_DIR}")
         return 1
-    result = run(["git", "rev-parse", "--git-dir"], cwd=rp, check=False)
-    if result.returncode != 0:
+    if not is_git_repo(rp):
         err(f"'{repo}' is not a git repository")
         return 1
 
-    branch = project_info.branch
     worktree_dir = project_dir / repo
-    result = run(
-        ["git", "worktree", "add", "-b", branch, str(worktree_dir)],
-        cwd=rp,
-        check=False,
-    )
+    result = worktree_add(rp, branch, worktree_dir)
     if result.returncode != 0:
         err(f"failed to create worktree for '{repo}':\n{result.stderr.strip()}")
         return 1
 
     print(f"{repo}: worktree at {worktree_dir} (branch {branch})")
-    project_info.repos.append(repo)
-    save_project_info(name, project_info)
+    add_repo_to_project(name, repo)
     return 0
 
 
-def primary_branch(repo_path: Path) -> str | None:
-    result = run(
-        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
-        cwd=repo_path,
-        check=False,
-    )
-    if result.returncode != 0:
-        return None
-    return str(result.stdout.strip().removeprefix("origin/"))
-
-
-def ahead_behind(ref_a: str, ref_b: str, cwd: Path) -> tuple[int, int] | None:
-    """Returns (ahead, behind) of ref_b relative to ref_a. ahead = commits in B not in A."""
-    result = run(
-        ["git", "rev-list", "--left-right", "--count", f"{ref_a}...{ref_b}"],
-        cwd=cwd,
-        check=False,
-    )
-    if result.returncode != 0:
-        return None
-    left, right = result.stdout.strip().split()
-    return int(right), int(left)  # (ahead, behind)
-
-
-def fmt_sync(ahead: int, behind: int) -> str:
-    if ahead == 0 and behind == 0:
-        return "up to date"
-    parts = []
-    if ahead:
-        parts.append(f"{ahead} ahead")
-    if behind:
-        parts.append(f"{behind} behind")
-    return ", ".join(parts)
-
-
-def extra_git_dirs(project_dir: Path, known_repos: list[str]) -> list[Path]:
-    known = set(known_repos)
-    extras: list[Path] = []
-    if not project_dir.is_dir():
-        return extras
-    for entry in sorted(project_dir.iterdir()):
-        if entry.name in known or not entry.is_dir():
-            continue
-        result = run(["git", "rev-parse", "--git-dir"], cwd=entry, check=False)
-        if result.returncode == 0:
-            extras.append(entry)
-    return extras
-
-
-def _branch_vs_primary_lines(wt: Path, primary: str) -> list[str]:
-    lines = []
-    sync = ahead_behind(f"origin/{primary}", "HEAD", wt)
-    if sync is not None:
-        ahead, behind = sync
-        if ahead:
-            lines.append(
-                f"[grey70]{ahead} commit{'s' if ahead != 1 else ''} ahead of {primary}[/grey70]"
-            )
-        if behind:
-            lines.append(
-                f"[grey70]{behind} commit{'s' if behind != 1 else ''} behind {primary}[/grey70]"
-            )
-    return lines
-
-
-def _uncommitted_lines(wt: Path) -> list[str]:
-    lines = []
-    result = run(["git", "status", "--porcelain"], cwd=wt, check=False)
-    if result.returncode == 0:
-        raw = result.stdout.splitlines()
-        changed = sum(1 for l in raw if l[:2] != "??")
-        untracked = sum(1 for l in raw if l[:2] == "??")
-        if changed:
-            lines.append(f"[dark_orange]{changed} modified[/dark_orange]")
-        if untracked:
-            lines.append(f"[dark_orange]{untracked} untracked[/dark_orange]")
-    return lines
-
-
-def _primary_vs_origin_lines(rp: Path, primary: str) -> list[str]:
-    lines = []
-    sync = ahead_behind(f"origin/{primary}", primary, rp)
-    if sync is not None:
-        ahead, behind = sync
-        if ahead and behind:
-            lines.append(f"[red]{primary} is out of sync with origin[/red]")
-        elif behind:
-            lines.append(f"[grey70]{primary} out of date, needs pull[/grey70]")
-        elif ahead:
-            lines.append(f"[grey70]{primary} out of date, needs push[/grey70]")
-    return lines
-
-
-def _branch_vs_origin_lines(wt: Path, branch: str) -> list[str]:
-    sync = ahead_behind(f"origin/{branch}", "HEAD", wt)
-    if sync is None:
-        return ["[grey70]branch not pushed to origin[/grey70]"]
-    ahead, behind = sync
-    if ahead and behind:
-        return ["[red]branch is out of sync with origin[/red]"]
-    if ahead:
-        return ["[grey70]branch out of date, needs push[/grey70]"]
-    if behind:
-        return ["[grey70]branch out of date, needs pull[/grey70]"]
-    return []
-
-
-def _print_status_lines(
-    local_lines: list[str], remote_lines: list[str], indent: str
-) -> None:
-    if not local_lines and not remote_lines:
-        console.print(f"{indent}  [green]up to date[/green]")
-        return
-    for line in local_lines:
-        console.print(f"{indent}  {line}")
-    if remote_lines:
-        if local_lines:
-            print()
-        for line in remote_lines:
-            console.print(f"{indent}  {line}")
-
-
-def print_untracked_repo_status(path: Path, indent: str = "  ") -> None:
-    print(f"{indent}{path.name}")
-
-    branch_result = run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=path, check=False
-    )
-    if branch_result.returncode != 0:
-        console.print(f"{indent}  [red]could not determine branch[/red]")
-        return
-    current_branch = branch_result.stdout.strip()
-
-    local_lines = _uncommitted_lines(path)
-    remote_lines = _branch_vs_origin_lines(path, current_branch)
-    _print_status_lines(local_lines, remote_lines, indent)
-
-
-def print_repo_status(
-    repo: str, project_dir: Path, branch: str, indent: str = "  "
-) -> None:
-    wt = project_dir / repo
-    rp = REPO_DIR / repo
-    print(f"{indent}{repo}")
-
-    if not wt.is_dir():
-        console.print(f"{indent}  [red]worktree missing[/red]")
-        return
-
-    primary = primary_branch(rp)
-    if not primary:
-        console.print(f"{indent}  [red]primary branch unknown[/red]")
-        return
-
-    local_lines = _branch_vs_primary_lines(wt, primary) + _uncommitted_lines(wt)
-    remote_lines = _primary_vs_origin_lines(
-        rp, primary
-    ) + _branch_vs_origin_lines(wt, branch)
-    _print_status_lines(local_lines, remote_lines, indent)
-
-
 def cmd_status() -> int:
-    project_dir = get_project_dir()
+    project_dir = get_current_project_dir()
     if project_dir is None:
         err("not inside a verp project")
         return 1
 
-    project_info = load_project_info(project_dir.name)
+    project_info = get_project(project_dir.name)
     if project_info is None:
         err(f"no project named '{project_dir.name}'")
         return 1
@@ -391,12 +185,12 @@ def cmd_status() -> int:
 
 
 def cmd_delete() -> int:
-    project_dir = get_project_dir()
+    project_dir = get_current_project_dir()
     if project_dir is None:
         err("not inside a verp project")
         return 1
     name = project_dir.name
-    project_info = load_project_info(name)
+    project_info = get_project(name)
     if project_info is None:
         err(f"no project named '{name}'")
         return 1
@@ -410,12 +204,8 @@ def cmd_delete() -> int:
         if not wt.is_dir():
             continue
 
-        # Uncommitted changes
-        result = run(["git", "status", "--porcelain"], cwd=wt, check=False)
-        if result.returncode == 0 and result.stdout.strip():
-            lines = result.stdout.splitlines()
-            changed = sum(1 for l in lines if l[:2] != "??")
-            untracked = sum(1 for l in lines if l[:2] == "??")
+        changed, untracked = worktree_changes(wt)
+        if changed or untracked:
             parts = []
             if changed:
                 parts.append(f"{changed} modified")
@@ -423,7 +213,6 @@ def cmd_delete() -> int:
                 parts.append(f"{untracked} untracked")
             warnings.append(f"{repo}: uncommitted changes ({', '.join(parts)})")
 
-        # Unpushed commits
         sync = ahead_behind(f"origin/{branch}", "HEAD", wt)
         if sync is None:
             warnings.append(f"{repo}: branch not pushed to origin")
@@ -434,7 +223,6 @@ def cmd_delete() -> int:
                     f"{repo}: {ahead} unpushed commit{'s' if ahead != 1 else ''}"
                 )
 
-    # Non-repo entries in the project dir
     known = set(repos)
     for entry in project_dir.iterdir():
         if entry.name not in known:
@@ -457,17 +245,13 @@ def cmd_delete() -> int:
         wt = project_dir / repo
         rp = REPO_DIR / repo
         if wt.is_dir():
-            result = run(
-                ["git", "worktree", "remove", "--force", str(wt)],
-                cwd=rp,
-                check=False,
-            )
+            result = worktree_remove(rp, wt)
             if result.returncode != 0:
                 err(
                     f"failed to remove worktree for {repo}: {result.stderr.strip()}"
                 )
                 return 1
-        result = run(["git", "branch", "-D", branch], cwd=rp, check=False)
+        result = branch_delete(rp, branch)
         if result.returncode != 0:
             err(
                 f"failed to delete branch {branch} in {repo}: {result.stderr.strip()}"
@@ -475,7 +259,7 @@ def cmd_delete() -> int:
             return 1
 
     shutil.rmtree(project_dir)
-    meta_path(name).unlink(missing_ok=True)
+    delete_project(name)
     print(f"deleted '{name}'")
     return 0
 
@@ -489,11 +273,7 @@ def cmd_rebase(interactive: bool) -> int:
     if not primary:
         err(f"could not determine primary branch for {worktree.repo}")
         return 1
-    cmd = ["git", "rebase"]
-    if interactive:
-        cmd.append("-i")
-    cmd.append(f"origin/{primary}")
-    return subprocess.run(cmd, cwd=worktree.path).returncode
+    return rebase(worktree.path, f"origin/{primary}", interactive)
 
 
 def cmd_push(force: bool) -> int:
@@ -501,35 +281,22 @@ def cmd_push(force: bool) -> int:
     if worktree is None:
         err("not inside a verp project worktree")
         return 1
-    result = run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        cwd=worktree.path,
-        check=False,
-    )
-    if result.returncode != 0:
+    branch = current_branch(worktree.path)
+    if branch is None:
         err("could not determine current branch")
         return 1
-    branch = result.stdout.strip()
-    cmd = ["git", "push", "-u", "origin", branch]
-    if force:
-        cmd.append("--force-with-lease")
-    return subprocess.run(cmd, cwd=worktree.path).returncode
+    return push(worktree.path, branch, force)
 
 
 def cmd_list() -> int:
-    if not DATA_DIR.exists():
+    projects = all_project_infos()
+    if not projects:
         print("no projects found")
         return 0
 
-    meta_files = sorted(DATA_DIR.glob("*.json"))
-    if not meta_files:
-        print("no projects found")
-        return 0
-
-    for i, mf in enumerate(meta_files):
+    for i, project_info in enumerate(projects):
         if i:
             print()
-        project_info = ProjectInfo(**json.loads(mf.read_text()))
         project_dir = Path(project_info.path)
         console.print(f"  [bold]{project_info.name}[/bold]")
         printed = 0
@@ -560,38 +327,25 @@ def cmd_repo_list() -> int:
         return 0
 
     for rp in repos:
-        result = run(["git", "rev-parse", "--git-dir"], cwd=rp, check=False)
-        if result.returncode != 0:
+        if not is_git_repo(rp):
             continue
 
         primary = primary_branch(rp) or "?"
-
-        url_result = run(
-            ["git", "remote", "get-url", "origin"], cwd=rp, check=False
-        )
-        url = url_result.stdout.strip() if url_result.returncode == 0 else "?"
-
-        wt_result = run(
-            ["git", "worktree", "list", "--porcelain"], cwd=rp, check=False
-        )
-        worktree_count = (
-            wt_result.stdout.count("worktree ") - 1
-            if wt_result.returncode == 0
-            else 0
-        )
+        url = remote_url(rp) or "?"
+        wt_count = worktree_count(rp)
 
         print(f"  {rp.name}")
         print(f"    branch:    {primary}")
         print(f"    remote:    {url}")
-        if worktree_count > 0:
-            print(f"    worktrees: {worktree_count}")
+        if wt_count > 0:
+            print(f"    worktrees: {wt_count}")
 
     return 0
 
 
 def cmd_repo_clone(url: str) -> int:
     REPO_DIR.mkdir(parents=True, exist_ok=True)
-    return subprocess.run(["git", "clone", url], cwd=REPO_DIR).returncode
+    return clone(url)
 
 
 def cmd_pull() -> int:
@@ -600,13 +354,10 @@ def cmd_pull() -> int:
     # Pull all primary repos
     if REPO_DIR.exists():
         for rp in sorted(REPO_DIR.iterdir()):
-            if not rp.is_dir():
-                continue
-            result = run(["git", "rev-parse", "--git-dir"], cwd=rp, check=False)
-            if result.returncode != 0:
+            if not rp.is_dir() or not is_git_repo(rp):
                 continue
             print(f"pulling {rp.name}...")
-            result = run(["git", "pull", "--ff-only"], cwd=rp, check=False)
+            result = pull(rp)
             if result.returncode != 0:
                 err(f"pull failed for {rp.name}:\n{result.stderr.strip()}")
                 rc = 1
@@ -615,29 +366,28 @@ def cmd_pull() -> int:
                 print(f"  {output if output else 'ok'}")
 
     # Fetch in all project worktrees
-    if DATA_DIR.exists():
-        for mf in sorted(DATA_DIR.glob("*.json")):
-            project_info = ProjectInfo(**json.loads(mf.read_text()))
-            name = project_info.name
-            project_dir = Path(project_info.path)
-            for repo in project_info.repos:
-                wt = project_dir / repo
-                if not wt.is_dir():
-                    err(f"worktree missing: {wt}")
-                    rc = 1
-                    continue
-                print(f"fetching {name}/{repo}...")
-                result = run(["git", "fetch"], cwd=wt, check=False)
-                if result.returncode != 0:
-                    err(f"fetch failed:\n{result.stderr.strip()}")
-                    rc = 1
-                else:
-                    print("  ok")
+    for project_info in all_project_infos():
+        name = project_info.name
+        project_dir = Path(project_info.path)
+        for repo in project_info.repos:
+            wt = project_dir / repo
+            if not wt.is_dir():
+                err(f"worktree missing: {wt}")
+                rc = 1
+                continue
+            print(f"fetching {name}/{repo}...")
+            result = fetch(wt)
+            if result.returncode != 0:
+                err(f"fetch failed:\n{result.stderr.strip()}")
+                rc = 1
+            else:
+                print("  ok")
 
     return rc
 
 
 def main() -> None:
+    init_db()
     description = textwrap.dedent("""\
         global:
           new <name> [repos...]    create a new project in the current directory

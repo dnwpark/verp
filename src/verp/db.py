@@ -1,0 +1,182 @@
+import sqlite3
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass
+class ProjectInfo:
+    name: str
+    path: str
+    branch: str
+    repos: list[str]
+
+
+DATA_DIR = Path.home() / ".local" / "share" / "verp"
+DB_PATH = DATA_DIR / "verp.db"
+
+
+def _db() -> sqlite3.Connection:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db() -> None:
+    if DB_PATH.exists():
+        return
+    conn = _db()
+    with conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS projects (
+                name TEXT PRIMARY KEY,
+                path TEXT NOT NULL,
+                branch TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS project_repos (
+                project_name TEXT NOT NULL
+                    REFERENCES projects(name) ON DELETE CASCADE,
+                repo TEXT NOT NULL,
+                PRIMARY KEY (project_name, repo)
+            )
+        """)
+    conn.close()
+
+
+def project_exists(name: str) -> bool:
+    if not DB_PATH.exists():
+        return False
+    conn = _db()
+    row = conn.execute(
+        "SELECT 1 FROM projects WHERE name = ?", (name,)
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def get_project(name: str) -> ProjectInfo | None:
+    if not DB_PATH.exists():
+        return None
+    conn = _db()
+    row = conn.execute(
+        "SELECT name, path, branch FROM projects WHERE name = ?", (name,)
+    ).fetchone()
+    if row is None:
+        conn.close()
+        return None
+    repos = [
+        str(r[0])
+        for r in conn.execute(
+            "SELECT repo FROM project_repos"
+            " WHERE project_name = ? ORDER BY rowid",
+            (name,),
+        ).fetchall()
+    ]
+    conn.close()
+    return ProjectInfo(
+        name=str(row["name"]),
+        path=str(row["path"]),
+        branch=str(row["branch"]),
+        repos=repos,
+    )
+
+
+def add_project(name: str, project_info: ProjectInfo) -> None:
+    conn = _db()
+    with conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO projects (name, path, branch) VALUES (?, ?, ?)",
+            (name, project_info.path, project_info.branch),
+        )
+        conn.execute(
+            "DELETE FROM project_repos WHERE project_name = ?", (name,)
+        )
+        for repo in project_info.repos:
+            conn.execute(
+                "INSERT INTO project_repos (project_name, repo) VALUES (?, ?)",
+                (name, repo),
+            )
+    conn.close()
+
+
+def delete_project(name: str) -> None:
+    conn = _db()
+    with conn:
+        conn.execute("DELETE FROM projects WHERE name = ?", (name,))
+    conn.close()
+
+
+def all_project_infos() -> list[ProjectInfo]:
+    if not DB_PATH.exists():
+        return []
+    conn = _db()
+    rows = conn.execute(
+        "SELECT name, path, branch FROM projects ORDER BY name"
+    ).fetchall()
+    result = []
+    for row in rows:
+        repos = [
+            str(r[0])
+            for r in conn.execute(
+                "SELECT repo FROM project_repos"
+                " WHERE project_name = ? ORDER BY rowid",
+                (row["name"],),
+            ).fetchall()
+        ]
+        result.append(
+            ProjectInfo(
+                name=str(row["name"]),
+                path=str(row["path"]),
+                branch=str(row["branch"]),
+                repos=repos,
+            )
+        )
+    conn.close()
+    return result
+
+
+def get_project_branch(name: str) -> str | None:
+    if not DB_PATH.exists():
+        return None
+    conn = _db()
+    row = conn.execute(
+        "SELECT branch FROM projects WHERE name = ?", (name,)
+    ).fetchone()
+    conn.close()
+    return str(row["branch"]) if row is not None else None
+
+
+def is_repo_in_project(project_name: str, repo: str) -> bool:
+    if not DB_PATH.exists():
+        return False
+    conn = _db()
+    row = conn.execute(
+        "SELECT 1 FROM project_repos WHERE project_name = ? AND repo = ?",
+        (project_name, repo),
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def add_repo_to_project(project_name: str, repo: str) -> None:
+    conn = _db()
+    with conn:
+        conn.execute(
+            "INSERT INTO project_repos (project_name, repo) VALUES (?, ?)",
+            (project_name, repo),
+        )
+    conn.close()
+
+
+def is_project_dir(path: Path) -> bool:
+    if not DB_PATH.exists():
+        return False
+    conn = _db()
+    row = conn.execute(
+        "SELECT 1 FROM projects WHERE path = ?", (str(path.resolve()),)
+    ).fetchone()
+    conn.close()
+    return row is not None
