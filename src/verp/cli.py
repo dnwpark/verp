@@ -8,6 +8,9 @@ import sys
 import textwrap
 from pathlib import Path
 from dataclasses import dataclass, asdict
+from rich.console import Console
+
+console = Console()
 
 
 @dataclass
@@ -255,11 +258,11 @@ def _branch_vs_primary_lines(wt: Path, primary: str) -> list[str]:
         ahead, behind = sync
         if ahead:
             lines.append(
-                f"{ahead} commit{'s' if ahead != 1 else ''} ahead of {primary}"
+                f"[grey70]{ahead} commit{'s' if ahead != 1 else ''} ahead of {primary}[/grey70]"
             )
         if behind:
             lines.append(
-                f"{behind} commit{'s' if behind != 1 else ''} behind {primary}"
+                f"[grey70]{behind} commit{'s' if behind != 1 else ''} behind {primary}[/grey70]"
             )
     return lines
 
@@ -272,9 +275,9 @@ def _uncommitted_lines(wt: Path) -> list[str]:
         changed = sum(1 for l in raw if l[:2] != "??")
         untracked = sum(1 for l in raw if l[:2] == "??")
         if changed:
-            lines.append(f"{changed} modified")
+            lines.append(f"[dark_orange]{changed} modified[/dark_orange]")
         if untracked:
-            lines.append(f"{untracked} untracked")
+            lines.append(f"[dark_orange]{untracked} untracked[/dark_orange]")
     return lines
 
 
@@ -284,25 +287,25 @@ def _primary_vs_origin_lines(rp: Path, primary: str) -> list[str]:
     if sync is not None:
         ahead, behind = sync
         if ahead and behind:
-            lines.append(f"{primary} is out of sync with origin")
+            lines.append(f"[red]{primary} is out of sync with origin[/red]")
         elif behind:
-            lines.append(f"{primary} out of date, needs pull")
+            lines.append(f"[grey70]{primary} out of date, needs pull[/grey70]")
         elif ahead:
-            lines.append(f"{primary} out of date, needs push")
+            lines.append(f"[grey70]{primary} out of date, needs push[/grey70]")
     return lines
 
 
 def _branch_vs_origin_lines(wt: Path, branch: str) -> list[str]:
     sync = ahead_behind(f"origin/{branch}", "HEAD", wt)
     if sync is None:
-        return ["branch not pushed to origin"]
+        return ["[grey70]branch not pushed to origin[/grey70]"]
     ahead, behind = sync
     if ahead and behind:
-        return ["branch is out of sync with origin"]
+        return ["[red]branch is out of sync with origin[/red]"]
     if ahead:
-        return ["branch out of date, needs push"]
+        return ["[grey70]branch out of date, needs push[/grey70]"]
     if behind:
-        return ["branch out of date, needs pull"]
+        return ["[grey70]branch out of date, needs pull[/grey70]"]
     return []
 
 
@@ -310,15 +313,15 @@ def _print_status_lines(
     local_lines: list[str], remote_lines: list[str], indent: str
 ) -> None:
     if not local_lines and not remote_lines:
-        print(f"{indent}  up to date")
+        console.print(f"{indent}  [green]up to date[/green]")
         return
     for line in local_lines:
-        print(f"{indent}  {line}")
+        console.print(f"{indent}  {line}")
     if remote_lines:
         if local_lines:
             print()
         for line in remote_lines:
-            print(f"{indent}  {line}")
+            console.print(f"{indent}  {line}")
 
 
 def print_untracked_repo_status(path: Path, indent: str = "  ") -> None:
@@ -328,7 +331,7 @@ def print_untracked_repo_status(path: Path, indent: str = "  ") -> None:
         ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=path, check=False
     )
     if branch_result.returncode != 0:
-        print(f"{indent}  could not determine branch")
+        console.print(f"{indent}  [red]could not determine branch[/red]")
         return
     current_branch = branch_result.stdout.strip()
 
@@ -345,12 +348,12 @@ def print_repo_status(
     print(f"{indent}{repo}")
 
     if not wt.is_dir():
-        print(f"{indent}  worktree missing")
+        console.print(f"{indent}  [red]worktree missing[/red]")
         return
 
     primary = primary_branch(rp)
     if not primary:
-        print(f"{indent}  primary branch unknown")
+        console.print(f"{indent}  [red]primary branch unknown[/red]")
         return
 
     local_lines = _branch_vs_primary_lines(wt, primary) + _uncommitted_lines(wt)
@@ -528,7 +531,7 @@ def cmd_list() -> int:
             print()
         project_info = ProjectInfo(**json.loads(mf.read_text()))
         project_dir = Path(project_info.path)
-        print(f"  {project_info.name}")
+        console.print(f"  [bold]{project_info.name}[/bold]")
         printed = 0
         for repo in project_info.repos:
             if printed:
