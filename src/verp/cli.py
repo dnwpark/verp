@@ -309,6 +309,9 @@ def _branch_vs_origin_lines(wt: Path, branch: str) -> list[str]:
 def _print_status_lines(
     local_lines: list[str], remote_lines: list[str], indent: str
 ) -> None:
+    if not local_lines and not remote_lines:
+        print(f"{indent}  up to date")
+        return
     for line in local_lines:
         print(f"{indent}  {line}")
     if remote_lines:
