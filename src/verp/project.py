@@ -66,9 +66,22 @@ def _migration_v4(project_info: ProjectInfo) -> None:
         old_db.unlink()
 
 
+def _migration_v5(project_info: ProjectInfo) -> None:
+    v5 = _VERSIONS_DIR / "5"
+    claude_dir = Path(project_info.path) / ".claude"
+    hooks_dir = claude_dir / "hooks"
+
+    shutil.copy2(v5 / "claude_settings.json", claude_dir / "settings.json")
+
+    dst = hooks_dir / "track.sh"
+    shutil.copy2(v5 / "track.sh", dst)
+    dst.chmod(0o755)
+
+
 _MIGRATIONS: dict[int, Callable[[ProjectInfo], None]] = {
     3: _migration_v3,
     4: _migration_v4,
+    5: _migration_v5,
 }
 
 

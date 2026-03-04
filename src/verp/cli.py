@@ -437,6 +437,8 @@ def cmd_internal_agent_event(
     project_name = (
         get_project_name_by_path(Path(project_dir)) if project_dir else None
     )
+    if project_name is None:
+        return 0
     upsert_agent(session_id, project_name, status, tool or None)
     return 0
 
