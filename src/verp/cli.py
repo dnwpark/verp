@@ -13,13 +13,18 @@ from verp.db import (
     add_project,
     add_repo_to_project,
     all_project_infos,
+    clear_agent_by_prefix,
     delete_project,
+    get_all_agents,
     get_project,
     get_project_branch,
+    get_project_name_by_path,
     init_db,
     is_project_dir,
     is_repo_in_project,
     project_exists,
+    remove_agent,
+    upsert_agent,
 )
 from verp.git import (
     REPO_DIR,
@@ -41,7 +46,7 @@ from verp.git import (
     worktree_count,
     worktree_remove,
 )
-from verp.agent import clear_agent, format_age, list_agents
+from verp.agent import format_age
 from verp.project import setup_new, upgrade_project
 from verp.status import console, print_repo_status, print_untracked_repo_status
 
@@ -399,7 +404,7 @@ def _status_color(status: str) -> str:
 
 
 def cmd_agent_list() -> int:
-    agents = list_agents(all_project_infos())
+    agents = get_all_agents()
     if not agents:
         print("no agents")
         return 0
@@ -418,11 +423,26 @@ def cmd_agent_list() -> int:
 
 
 def cmd_agent_clear(session_id: str) -> int:
-    found = clear_agent(session_id, all_project_infos())
+    found = clear_agent_by_prefix(session_id)
     if not found:
         err(f"no agent matching '{session_id}'")
         return 1
     print(f"cleared {session_id}")
+    return 0
+
+
+def cmd_internal_agent_event(
+    session_id: str, project_dir: str, status: str, tool: str | None
+) -> int:
+    project_name = (
+        get_project_name_by_path(Path(project_dir)) if project_dir else None
+    )
+    upsert_agent(session_id, project_name, status, tool or None)
+    return 0
+
+
+def cmd_internal_agent_remove(session_id: str) -> int:
+    remove_agent(session_id)
     return 0
 
 
@@ -502,6 +522,18 @@ def main() -> None:
     p_agent_clear = agent_sub.add_parser("clear", help="clear an agent entry")
     p_agent_clear.add_argument("id", help="session ID prefix")
 
+    p_internal = sub.add_parser("_internal")
+    internal_sub = p_internal.add_subparsers(
+        dest="internal_command", required=True
+    )
+    p_agent_event = internal_sub.add_parser("agent_event")
+    p_agent_event.add_argument("session_id")
+    p_agent_event.add_argument("project_dir")
+    p_agent_event.add_argument("status")
+    p_agent_event.add_argument("tool", nargs="?", default=None)
+    p_agent_remove = internal_sub.add_parser("agent_remove")
+    p_agent_remove.add_argument("session_id")
+
     argcomplete.autocomplete(parser, always_complete_options=False)
     args = parser.parse_args()
 
@@ -531,3 +563,12 @@ def main() -> None:
             sys.exit(cmd_agent_list())
         elif args.agent_command == "clear":
             sys.exit(cmd_agent_clear(args.id))
+    elif args.command == "_internal":
+        if args.internal_command == "agent_event":
+            sys.exit(
+                cmd_internal_agent_event(
+                    args.session_id, args.project_dir, args.status, args.tool
+                )
+            )
+        elif args.internal_command == "agent_remove":
+            sys.exit(cmd_internal_agent_remove(args.session_id))

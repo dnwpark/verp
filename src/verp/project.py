@@ -16,21 +16,9 @@ def setup_new(project_info: ProjectInfo) -> None:
 
     shutil.copy2(latest / "claude_settings.json", claude_dir / "settings.json")
 
-    dst = hooks_dir / "track.py"
-    shutil.copy2(latest / "track.py", dst)
+    dst = hooks_dir / "track.sh"
+    shutil.copy2(latest / "track.sh", dst)
     dst.chmod(0o755)
-
-    conn = sqlite3.connect(claude_dir / "verp.db")
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS agents ("
-        "    session_id TEXT PRIMARY KEY,"
-        "    status     TEXT NOT NULL,"
-        "    tool       TEXT,"
-        "    updated_at INTEGER NOT NULL"
-        ")"
-    )
-    conn.commit()
-    conn.close()
 
 
 def _migration_v3(project_info: ProjectInfo) -> None:
@@ -58,8 +46,29 @@ def _migration_v3(project_info: ProjectInfo) -> None:
     conn.close()
 
 
+def _migration_v4(project_info: ProjectInfo) -> None:
+    v4 = _VERSIONS_DIR / "4"
+    claude_dir = Path(project_info.path) / ".claude"
+    hooks_dir = claude_dir / "hooks"
+
+    shutil.copy2(v4 / "claude_settings.json", claude_dir / "settings.json")
+
+    dst = hooks_dir / "track.sh"
+    shutil.copy2(v4 / "track.sh", dst)
+    dst.chmod(0o755)
+
+    old_track = hooks_dir / "track.py"
+    if old_track.exists():
+        old_track.unlink()
+
+    old_db = claude_dir / "verp.db"
+    if old_db.exists():
+        old_db.unlink()
+
+
 _MIGRATIONS: dict[int, Callable[[ProjectInfo], None]] = {
     3: _migration_v3,
+    4: _migration_v4,
 }
 
 

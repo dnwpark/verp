@@ -13,10 +13,19 @@ class ProjectInfo:
     version: int
 
 
+@dataclass
+class AgentInfo:
+    session_id: str
+    project: str
+    status: str
+    tool: str | None
+    updated_at: int
+
+
 DATA_DIR = Path.home() / ".local" / "share" / "verp"
 DB_PATH = DATA_DIR / "verp.db"
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def _db() -> sqlite3.Connection:
@@ -51,10 +60,23 @@ def _migrate_to_v2(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_to_v4(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS agents (
+            session_id   TEXT PRIMARY KEY,
+            project_name TEXT NOT NULL REFERENCES projects(name) ON DELETE CASCADE,
+            status       TEXT NOT NULL,
+            tool         TEXT,
+            updated_at   INTEGER NOT NULL
+        )
+    """)
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
     3: lambda conn: None,
+    4: _migrate_to_v4,
 }
 
 
@@ -222,3 +244,77 @@ def is_project_dir(path: Path) -> bool:
     ).fetchone()
     conn.close()
     return row is not None
+
+
+def get_project_name_by_path(path: Path) -> str | None:
+    if not DB_PATH.exists():
+        return None
+    conn = _db()
+    row = conn.execute(
+        "SELECT name FROM projects WHERE path = ?", (str(path.resolve()),)
+    ).fetchone()
+    conn.close()
+    return str(row["name"]) if row is not None else None
+
+
+def upsert_agent(
+    session_id: str, project_name: str | None, status: str, tool: str | None
+) -> None:
+    import time
+
+    conn = _db()
+    with conn:
+        conn.execute(
+            "INSERT INTO agents (session_id, project_name, status, tool, updated_at)"
+            " VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT(session_id) DO UPDATE SET"
+            "     status = excluded.status,"
+            "     tool = excluded.tool,"
+            "     updated_at = excluded.updated_at",
+            (session_id, project_name, status, tool, int(time.time())),
+        )
+    conn.close()
+
+
+def remove_agent(session_id: str) -> None:
+    conn = _db()
+    with conn:
+        conn.execute("DELETE FROM agents WHERE session_id = ?", (session_id,))
+    conn.close()
+
+
+def clear_agent_by_prefix(prefix: str) -> bool:
+    conn = _db()
+    row = conn.execute(
+        "SELECT session_id FROM agents WHERE session_id LIKE ?", (prefix + "%",)
+    ).fetchone()
+    if row is None:
+        conn.close()
+        return False
+    with conn:
+        conn.execute(
+            "DELETE FROM agents WHERE session_id = ?", (row["session_id"],)
+        )
+    conn.close()
+    return True
+
+
+def get_all_agents() -> list[AgentInfo]:
+    if not DB_PATH.exists():
+        return []
+    conn = _db()
+    rows = conn.execute(
+        "SELECT session_id, project_name, status, tool, updated_at"
+        " FROM agents WHERE project_name IS NOT NULL ORDER BY updated_at DESC"
+    ).fetchall()
+    conn.close()
+    return [
+        AgentInfo(
+            session_id=str(row["session_id"]),
+            project=str(row["project_name"]),
+            status=str(row["status"]),
+            tool=str(row["tool"]) if row["tool"] is not None else None,
+            updated_at=int(row["updated_at"]),
+        )
+        for row in rows
+    ]
