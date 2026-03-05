@@ -27,7 +27,7 @@ DATA_DIR = Path.home() / ".local" / "share" / "verp"
 DB_PATH = DATA_DIR / "verp.db"
 _VERSIONS_DIR = Path(__file__).parent / "_versions"
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 
 def _db() -> sqlite3.Connection:
@@ -102,6 +102,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     9: lambda conn: None,
     10: lambda conn: None,
     11: _migrate_to_v11,
+    12: lambda conn: None,
 }
 
 

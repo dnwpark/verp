@@ -9,16 +9,7 @@ _VERSIONS_DIR = Path(__file__).parent / "_versions"
 
 
 def setup_new(project_info: ProjectInfo) -> None:
-    latest = _VERSIONS_DIR / "latest"
-    claude_dir = Path(project_info.path) / ".claude"
-    hooks_dir = claude_dir / "hooks"
-    hooks_dir.mkdir(parents=True, exist_ok=True)
-
-    shutil.copy2(latest / "claude_settings.json", claude_dir / "settings.json")
-
-    dst = hooks_dir / "track.sh"
-    shutil.copy2(latest / "track.sh", dst)
-    dst.chmod(0o755)
+    pass
 
 
 def _migration_v3(project_info: ProjectInfo) -> None:
@@ -129,6 +120,23 @@ def _migration_v10(project_info: ProjectInfo) -> None:
     dst.chmod(0o755)
 
 
+def _migration_v12(project_info: ProjectInfo) -> None:
+    claude_dir = Path(project_info.path) / ".claude"
+    hooks_dir = claude_dir / "hooks"
+
+    for name in ("track.sh", "track.py"):
+        f = hooks_dir / name
+        if f.exists():
+            f.unlink()
+
+    if hooks_dir.exists() and not any(hooks_dir.iterdir()):
+        hooks_dir.rmdir()
+
+    settings = claude_dir / "settings.json"
+    if settings.exists():
+        settings.unlink()
+
+
 _MIGRATIONS: dict[int, Callable[[ProjectInfo], None]] = {
     3: _migration_v3,
     4: _migration_v4,
@@ -138,6 +146,7 @@ _MIGRATIONS: dict[int, Callable[[ProjectInfo], None]] = {
     8: _migration_v8,
     9: _migration_v9,
     10: _migration_v10,
+    12: _migration_v12,
 }
 
 
