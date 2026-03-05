@@ -78,11 +78,16 @@ def ahead_behind(ref_a: str, ref_b: str, cwd: Path) -> tuple[int, int] | None:
 def worktree_add(
     repo_dir: Path, branch: str, worktree_dir: Path
 ) -> subprocess.CompletedProcess[str]:
-    return run(
-        ["git", "worktree", "add", "-b", branch, str(worktree_dir)],
+    remote_ref = f"origin/{branch}"
+    remote_exists = run(
+        ["git", "ls-remote", "--heads", "origin", branch],
         cwd=repo_dir,
         check=False,
     )
+    cmd = ["git", "worktree", "add", "-b", branch, str(worktree_dir)]
+    if remote_exists.returncode == 0 and remote_exists.stdout.strip():
+        cmd.append(remote_ref)
+    return run(cmd, cwd=repo_dir, check=False)
 
 
 def worktree_remove(
