@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 import argparse
 import argcomplete
+import fcntl
 import os
 import pty
+import select
 import shutil
 import signal
+import struct
 import sys
+import termios
+import tty
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path
@@ -515,10 +520,45 @@ def cmd_internal_hook_stop(
     return 0
 
 
+def _set_winsize(fd: int) -> None:
+    size = fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b"\x00" * 8)
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, size)
+
+
 def cmd_claude(args: list[str]) -> int:
     settings = DATA_DIR / "claude-settings.json"
     cmd = ["claude", "--settings", str(settings)] + args
-    status = pty.spawn(cmd)
+
+    pid, master_fd = pty.fork()
+    if pid == 0:
+        os.execvp(cmd[0], cmd)
+
+    _set_winsize(master_fd)
+    signal.signal(signal.SIGWINCH, lambda _s, _f: _set_winsize(master_fd))
+
+    stdin_fd = sys.stdin.fileno()
+    old = termios.tcgetattr(stdin_fd)
+    tty.setraw(stdin_fd)
+    try:
+        while True:
+            try:
+                fds, _, _ = select.select([master_fd, sys.stdin], [], [])
+            except (KeyboardInterrupt, OSError):
+                break
+            if master_fd in fds:
+                try:
+                    data = os.read(master_fd, 1024)
+                except OSError:
+                    break
+                os.write(sys.stdout.fileno(), data)
+            if sys.stdin in fds:
+                data = os.read(stdin_fd, 1024)
+                os.write(master_fd, data)
+    finally:
+        termios.tcsetattr(stdin_fd, termios.TCSAFLUSH, old)
+        os.close(master_fd)
+
+    _, status = os.waitpid(pid, 0)
     return os.waitstatus_to_exitcode(status)
 
 
