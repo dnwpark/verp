@@ -25,7 +25,7 @@ class AgentInfo:
 DATA_DIR = Path.home() / ".local" / "share" / "verp"
 DB_PATH = DATA_DIR / "verp.db"
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 def _db() -> sqlite3.Connection:
@@ -83,6 +83,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     4: _migrate_to_v4,
     5: lambda conn: None,
     6: _migrate_to_v6,
+    7: lambda conn: None,
 }
 
 
@@ -252,24 +253,45 @@ def is_project_dir(path: Path) -> bool:
     return row is not None
 
 
-def upsert_agent(
-    session_id: str,
-    project_name: str | None,
-    status: str,
-    tool: str | None,
-    timestamp: int,
+def upsert_agent_status(
+    session_id: str, project_name: str, status: str, timestamp: int
 ) -> None:
     conn = _db()
     with conn:
         conn.execute(
             "INSERT INTO agents (session_id, project_name, status, tool, updated_at)"
-            " VALUES (?, ?, ?, ?, ?)"
+            " VALUES (?, ?, ?, NULL, ?)"
             " ON CONFLICT(session_id) DO UPDATE SET"
             "     status = excluded.status,"
-            "     tool = excluded.tool,"
             "     updated_at = excluded.updated_at"
             " WHERE excluded.updated_at >= agents.updated_at",
-            (session_id, project_name, status, tool, timestamp),
+            (session_id, project_name, status, timestamp),
+        )
+    conn.close()
+
+
+def clear_agent_tool(session_id: str) -> None:
+    conn = _db()
+    with conn:
+        conn.execute(
+            "UPDATE agents SET tool = NULL WHERE session_id = ?", (session_id,)
+        )
+    conn.close()
+
+
+def upsert_agent_tool(
+    session_id: str, project_name: str, tool: str, timestamp: int
+) -> None:
+    conn = _db()
+    with conn:
+        conn.execute(
+            "INSERT INTO agents (session_id, project_name, status, tool, updated_at)"
+            " VALUES (?, ?, 'working', ?, ?)"
+            " ON CONFLICT(session_id) DO UPDATE SET"
+            "     tool = excluded.tool,"
+            "     status = CASE WHEN agents.status = 'waiting_prompt'"
+            "                   THEN 'working' ELSE agents.status END",
+            (session_id, project_name, tool, timestamp),
         )
     conn.close()
 

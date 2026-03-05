@@ -22,8 +22,10 @@ from verp.db import (
     is_project_dir,
     is_repo_in_project,
     project_exists,
+    clear_agent_tool,
     remove_agent,
-    upsert_agent,
+    upsert_agent_status,
+    upsert_agent_tool,
 )
 from verp.git import (
     REPO_DIR,
@@ -391,12 +393,6 @@ def cmd_pull() -> int:
     return rc
 
 
-def _status_color(status: str) -> str:
-    if status == "working":
-        return "green"
-    return "dark_orange"
-
-
 def cmd_agent_list() -> int:
     agents = get_all_agents()
     if not agents:
@@ -404,13 +400,13 @@ def cmd_agent_list() -> int:
         return 0
     for agent in agents:
         sid = agent.session_id[:8]
-        color = _status_color(agent.status)
-        status = agent.status
-        if agent.tool:
-            status = f"{status} ({agent.tool})"
+        color = "green" if agent.status == "working" else "dark_orange"
+        status_str = (
+            f"{agent.status} ({agent.tool})" if agent.tool else agent.status
+        )
         console.print(
             f"  [bold]{sid}[/bold]  {agent.project}"
-            f"  [{color}]{status}[/{color}]"
+            f"  [{color}]{status_str}[/{color}]"
             f"  [grey70]{format_age(agent.updated_at)}[/grey70]"
         )
     return 0
@@ -426,13 +422,27 @@ def cmd_agent_clear(session_id: str) -> int:
 
 
 def cmd_internal_agent_event(
-    session_id: str, project_dir: str, status: str, tool: str, timestamp: int
+    session_id: str, project_dir: str, status: str, timestamp: int
 ) -> int:
     p = Path(project_dir)
     project_name = p.name if project_dir and is_project_dir(p) else None
     if project_name is None:
         return 0
-    upsert_agent(session_id, project_name, status, tool or None, timestamp)
+    upsert_agent_status(session_id, project_name, status, timestamp)
+    return 0
+
+
+def cmd_internal_agent_tool(
+    session_id: str, project_dir: str, tool: str, timestamp: int
+) -> int:
+    if tool:
+        p = Path(project_dir)
+        project_name = p.name if project_dir and is_project_dir(p) else None
+        if project_name is None:
+            return 0
+        upsert_agent_tool(session_id, project_name, tool, timestamp)
+    else:
+        clear_agent_tool(session_id)
     return 0
 
 
@@ -525,8 +535,12 @@ def main() -> None:
     p_agent_event.add_argument("session_id")
     p_agent_event.add_argument("project_dir")
     p_agent_event.add_argument("status")
-    p_agent_event.add_argument("tool")
     p_agent_event.add_argument("timestamp", type=int)
+    p_agent_tool = internal_sub.add_parser("agent_tool")
+    p_agent_tool.add_argument("session_id")
+    p_agent_tool.add_argument("project_dir")
+    p_agent_tool.add_argument("tool")
+    p_agent_tool.add_argument("timestamp", type=int)
     p_agent_remove = internal_sub.add_parser("agent_remove")
     p_agent_remove.add_argument("session_id")
 
@@ -566,8 +580,13 @@ def main() -> None:
                     args.session_id,
                     args.project_dir,
                     args.status,
-                    args.tool,
                     args.timestamp,
+                )
+            )
+        elif args.internal_command == "agent_tool":
+            sys.exit(
+                cmd_internal_agent_tool(
+                    args.session_id, args.project_dir, args.tool, args.timestamp
                 )
             )
         elif args.internal_command == "agent_remove":
