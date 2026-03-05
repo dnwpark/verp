@@ -1,3 +1,4 @@
+import shutil
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -24,8 +25,9 @@ class AgentInfo:
 
 DATA_DIR = Path.home() / ".local" / "share" / "verp"
 DB_PATH = DATA_DIR / "verp.db"
+_VERSIONS_DIR = Path(__file__).parent / "_versions"
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 def _db() -> sqlite3.Connection:
@@ -76,6 +78,18 @@ def _migrate_to_v6(conn: sqlite3.Connection) -> None:
     conn.execute("UPDATE agents SET updated_at = updated_at * 1000")
 
 
+def _migrate_to_v11(conn: sqlite3.Connection) -> None:
+    v11 = _VERSIONS_DIR / "11"
+
+    track = DATA_DIR / "track.sh"
+    shutil.copy2(v11 / "track.sh", track)
+    track.chmod(0o755)
+
+    shutil.copy2(
+        v11 / "claude_settings.json", DATA_DIR / "claude-settings.json"
+    )
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
@@ -87,10 +101,11 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     8: lambda conn: None,
     9: lambda conn: None,
     10: lambda conn: None,
+    11: _migrate_to_v11,
 }
 
 
-def init_db() -> None:
+def init_internal() -> None:
     conn = _db()
     current = conn.execute("PRAGMA user_version").fetchone()[0]
     if current >= SCHEMA_VERSION:

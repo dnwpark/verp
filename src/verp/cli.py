@@ -23,7 +23,7 @@ from verp.db import (
     get_all_agents,
     get_project,
     get_project_branch,
-    init_db,
+    init_internal,
     is_project_dir,
     is_repo_in_project,
     project_exists,
@@ -50,7 +50,7 @@ from verp.git import (
     worktree_remove,
 )
 from verp.agent import format_age
-from verp.project import setup_new, upgrade_project
+from verp.project import init_project, setup_new
 from verp.status import console, print_repo_status, print_untracked_repo_status
 
 BRANCH_PREFIX = "dnwpark"
@@ -514,9 +514,9 @@ def cmd_claude(args: list[str]) -> int:
 
 
 def main() -> None:
-    init_db()
+    init_internal()
     for project_info in all_project_infos():
-        upgrade_project(project_info)
+        init_project(project_info)
     description = textwrap.dedent("""\
         global:
           new <name> [repos...]    create a new project in the current directory
