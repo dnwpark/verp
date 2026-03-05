@@ -2,7 +2,9 @@
 import argparse
 import argcomplete
 import os
+import pty
 import shutil
+import signal
 import sys
 import textwrap
 from dataclasses import dataclass
@@ -516,11 +518,15 @@ def cmd_internal_hook_stop(
 def cmd_claude(args: list[str]) -> int:
     settings = DATA_DIR / "claude-settings.json"
     cmd = ["claude", "--settings", str(settings)] + args
-    os.execvp("claude", cmd)
-    return 0  # unreachable
+    status = pty.spawn(cmd)
+    return os.waitstatus_to_exitcode(status)
 
 
 def main() -> None:
+    # Ensure that we don't exit before the stop hook is fully processed.
+    if len(sys.argv) > 1 and sys.argv[1] == "_claude":
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+
     init_internal()
     for project_info in all_project_infos():
         init_project(project_info)
