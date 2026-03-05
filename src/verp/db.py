@@ -252,17 +252,6 @@ def is_project_dir(path: Path) -> bool:
     return row is not None
 
 
-def get_project_name_by_path(path: Path) -> str | None:
-    if not DB_PATH.exists():
-        return None
-    conn = _db()
-    row = conn.execute(
-        "SELECT name FROM projects WHERE path = ?", (str(path.resolve()),)
-    ).fetchone()
-    conn.close()
-    return str(row["name"]) if row is not None else None
-
-
 def upsert_agent(
     session_id: str,
     project_name: str | None,

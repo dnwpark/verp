@@ -18,7 +18,6 @@ from verp.db import (
     get_all_agents,
     get_project,
     get_project_branch,
-    get_project_name_by_path,
     init_db,
     is_project_dir,
     is_repo_in_project,
@@ -64,10 +63,10 @@ def err(msg: str) -> None:
     print(f"error: {msg}", file=sys.stderr)
 
 
-def get_current_project_dir() -> Path | None:
+def get_current_project() -> ProjectInfo | None:
     for p in [Path.cwd(), *Path.cwd().parents]:
         if is_project_dir(p):
-            return p
+            return get_project(p.name)
     return None
 
 
@@ -133,21 +132,17 @@ def cmd_new(name: str, repos: list[str]) -> int:
 
 
 def cmd_add(repo: str) -> int:
-    project_dir = get_current_project_dir()
-    if project_dir is None:
+    project_info = get_current_project()
+    if project_info is None:
         err("not inside a verp project")
         return 1
 
-    name = project_dir.name
-    if not project_exists(name):
-        err(f"no project named '{name}'")
-        return 1
+    name = project_info.name
+    project_dir = Path(project_info.path)
 
     if is_repo_in_project(name, repo):
         err(f"'{repo}' is already associated with project '{name}'")
         return 1
-
-    branch = get_project_branch(name) or ""
 
     rp = REPO_DIR / repo
     if not rp.is_dir():
@@ -158,26 +153,23 @@ def cmd_add(repo: str) -> int:
         return 1
 
     worktree_dir = project_dir / repo
-    result = worktree_add(rp, branch, worktree_dir)
+    result = worktree_add(rp, project_info.branch, worktree_dir)
     if result.returncode != 0:
         err(f"failed to create worktree for '{repo}':\n{result.stderr.strip()}")
         return 1
 
-    print(f"{repo}: worktree at {worktree_dir} (branch {branch})")
+    print(f"{repo}: worktree at {worktree_dir} (branch {project_info.branch})")
     add_repo_to_project(name, repo)
     return 0
 
 
 def cmd_status() -> int:
-    project_dir = get_current_project_dir()
-    if project_dir is None:
+    project_info = get_current_project()
+    if project_info is None:
         err("not inside a verp project")
         return 1
 
-    project_info = get_project(project_dir.name)
-    if project_info is None:
-        err(f"no project named '{project_dir.name}'")
-        return 1
+    project_dir = Path(project_info.path)
 
     printed = 0
     for repo in project_info.repos:
@@ -196,15 +188,12 @@ def cmd_status() -> int:
 
 
 def cmd_delete() -> int:
-    project_dir = get_current_project_dir()
-    if project_dir is None:
+    project_info = get_current_project()
+    if project_info is None:
         err("not inside a verp project")
         return 1
-    name = project_dir.name
-    project_info = get_project(name)
-    if project_info is None:
-        err(f"no project named '{name}'")
-        return 1
+    name = project_info.name
+    project_dir = Path(project_info.path)
     branch = project_info.branch
     repos = project_info.repos
 
@@ -434,9 +423,8 @@ def cmd_agent_clear(session_id: str) -> int:
 def cmd_internal_agent_event(
     session_id: str, project_dir: str, status: str, tool: str, timestamp: int
 ) -> int:
-    project_name = (
-        get_project_name_by_path(Path(project_dir)) if project_dir else None
-    )
+    p = Path(project_dir)
+    project_name = p.name if project_dir and is_project_dir(p) else None
     if project_name is None:
         return 0
     upsert_agent(session_id, project_name, status, tool or None, timestamp)
