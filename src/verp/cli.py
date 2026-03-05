@@ -51,6 +51,8 @@ from verp.git import (
 )
 from verp.agent import format_age
 from verp.project import init_project, setup_new
+from rich.table import Table
+
 from verp.status import console, print_repo_status, print_untracked_repo_status
 
 BRANCH_PREFIX = "dnwpark"
@@ -398,15 +400,15 @@ def cmd_pull() -> int:
 def _format_directory(directory: str) -> str:
     path = Path(directory)
     if is_project_dir(path):
-        return path.name
+        return f"[medium_purple1]{path.name}[/medium_purple1]"
     for p in path.parents:
         if is_project_dir(p):
-            return f"{p.name}/{path.relative_to(p)}"
+            return f"[medium_purple1]{p.name}[/medium_purple1][grey70]/{path.relative_to(p)}[/grey70]"
     home = Path.home()
     try:
-        return f"~/{path.relative_to(home)}"
+        return f"[grey70]~/{path.relative_to(home)}[/grey70]"
     except ValueError:
-        return directory
+        return f"[grey70]{directory}[/grey70]"
 
 
 def cmd_agent_list() -> int:
@@ -414,17 +416,24 @@ def cmd_agent_list() -> int:
     if not agents:
         print("no agents")
         return 0
+    table = Table(box=None, padding=(0, 2), show_header=False, highlight=False)
+    table.add_column()
+    table.add_column()
+    table.add_column()
+    table.add_column()
     for agent in agents:
         sid = agent.session_id[:8]
         color = "green" if agent.status == "working" else "dark_orange"
         status_str = (
             f"{agent.status} ({agent.tool})" if agent.tool else agent.status
         )
-        console.print(
-            f"  [bold]{sid}[/bold]  {_format_directory(agent.directory)}"
-            f"  [{color}]{status_str}[/{color}]"
-            f"  [grey70]{format_age(agent.updated_at)}[/grey70]"
+        table.add_row(
+            f"[bold]{sid}[/bold]",
+            _format_directory(agent.directory),
+            f"[{color}]{status_str}[/{color}]",
+            f"[grey70]{format_age(agent.updated_at)}[/grey70]",
         )
+    console.print(table)
     return 0
 
 
@@ -504,11 +513,6 @@ def cmd_internal_hook_stop(
     return 0
 
 
-def cmd_internal_agent_remove(session_id: str) -> int:
-    remove_agent(session_id)
-    return 0
-
-
 def cmd_claude(args: list[str]) -> int:
     settings = DATA_DIR / "claude-settings.json"
     cmd = ["claude", "--settings", str(settings)] + args
@@ -520,6 +524,10 @@ def main() -> None:
     init_internal()
     for project_info in all_project_infos():
         init_project(project_info)
+
+    if len(sys.argv) > 1 and sys.argv[1] == "claude":
+        sys.exit(cmd_claude(sys.argv[2:]))
+
     description = textwrap.dedent("""\
         global:
           new <name> [repos...]    create a new project in the current directory
@@ -673,9 +681,6 @@ def main() -> None:
             sys.exit(cmd_agent_list())
         elif args.agent_command == "clear":
             sys.exit(cmd_agent_clear(args.id))
-    elif args.command == "_internal":
-        if args.internal_command == "agent_remove":
-            sys.exit(cmd_internal_agent_remove(args.session_id))
     elif args.command == "_claude":
         if args.claude_command == "hook_session_start":
             sys.exit(
