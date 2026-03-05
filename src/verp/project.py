@@ -96,12 +96,22 @@ def _migration_v7(project_info: ProjectInfo) -> None:
     dst.chmod(0o755)
 
 
+def _migration_v8(project_info: ProjectInfo) -> None:
+    v8 = _VERSIONS_DIR / "8"
+    hooks_dir = Path(project_info.path) / ".claude" / "hooks"
+
+    dst = hooks_dir / "track.sh"
+    shutil.copy2(v8 / "track.sh", dst)
+    dst.chmod(0o755)
+
+
 _MIGRATIONS: dict[int, Callable[[ProjectInfo], None]] = {
     3: _migration_v3,
     4: _migration_v4,
     5: _migration_v5,
     6: _migration_v6,
     7: _migration_v7,
+    8: _migration_v8,
 }
 
 

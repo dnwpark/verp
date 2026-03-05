@@ -25,7 +25,7 @@ class AgentInfo:
 DATA_DIR = Path.home() / ".local" / "share" / "verp"
 DB_PATH = DATA_DIR / "verp.db"
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def _db() -> sqlite3.Connection:
@@ -84,6 +84,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     5: lambda conn: None,
     6: _migrate_to_v6,
     7: lambda conn: None,
+    8: lambda conn: None,
 }
 
 
@@ -253,9 +254,10 @@ def is_project_dir(path: Path) -> bool:
     return row is not None
 
 
-def upsert_agent_status(
+def set_agent_status(
     session_id: str, project_name: str, status: str, timestamp: int
 ) -> None:
+    """Create agent if needed and set status. Uses timestamp guard."""
     conn = _db()
     with conn:
         conn.execute(
@@ -270,28 +272,23 @@ def upsert_agent_status(
     conn.close()
 
 
-def clear_agent_tool(session_id: str) -> None:
+def set_agent_tool(session_id: str, tool: str) -> None:
+    """Set tool on an existing agent."""
     conn = _db()
     with conn:
         conn.execute(
-            "UPDATE agents SET tool = NULL WHERE session_id = ?", (session_id,)
+            "UPDATE agents SET tool = ? WHERE session_id = ?",
+            (tool, session_id),
         )
     conn.close()
 
 
-def upsert_agent_tool(
-    session_id: str, project_name: str, tool: str, timestamp: int
-) -> None:
+def reset_agent_tool(session_id: str) -> None:
+    """Clear tool on an existing agent."""
     conn = _db()
     with conn:
         conn.execute(
-            "INSERT INTO agents (session_id, project_name, status, tool, updated_at)"
-            " VALUES (?, ?, 'working', ?, ?)"
-            " ON CONFLICT(session_id) DO UPDATE SET"
-            "     tool = excluded.tool,"
-            "     status = CASE WHEN agents.status = 'waiting_prompt'"
-            "                   THEN 'working' ELSE agents.status END",
-            (session_id, project_name, tool, timestamp),
+            "UPDATE agents SET tool = NULL WHERE session_id = ?", (session_id,)
         )
     conn.close()
 

@@ -14,6 +14,9 @@ from verp.db import (
     add_repo_to_project,
     all_project_infos,
     clear_agent_by_prefix,
+    reset_agent_tool,
+    set_agent_status,
+    set_agent_tool,
     delete_project,
     get_all_agents,
     get_project,
@@ -22,10 +25,7 @@ from verp.db import (
     is_project_dir,
     is_repo_in_project,
     project_exists,
-    clear_agent_tool,
     remove_agent,
-    upsert_agent_status,
-    upsert_agent_tool,
 )
 from verp.git import (
     REPO_DIR,
@@ -421,28 +421,60 @@ def cmd_agent_clear(session_id: str) -> int:
     return 0
 
 
-def cmd_internal_agent_event(
-    session_id: str, project_dir: str, status: str, timestamp: int
-) -> int:
+def _project_name(project_dir: str) -> str | None:
     p = Path(project_dir)
-    project_name = p.name if project_dir and is_project_dir(p) else None
-    if project_name is None:
-        return 0
-    upsert_agent_status(session_id, project_name, status, timestamp)
+    return p.name if project_dir and is_project_dir(p) else None
+
+
+def cmd_internal_hook_session_start(session_id: str, timestamp: int) -> int:
     return 0
 
 
-def cmd_internal_agent_tool(
+def cmd_internal_hook_session_end(session_id: str, timestamp: int) -> int:
+    remove_agent(session_id)
+    return 0
+
+
+def cmd_internal_hook_pre_tool_use(
     session_id: str, project_dir: str, tool: str, timestamp: int
 ) -> int:
-    if tool:
-        p = Path(project_dir)
-        project_name = p.name if project_dir and is_project_dir(p) else None
-        if project_name is None:
-            return 0
-        upsert_agent_tool(session_id, project_name, tool, timestamp)
-    else:
-        clear_agent_tool(session_id)
+    project_name = _project_name(project_dir)
+    if project_name is None:
+        return 0
+    set_agent_status(session_id, project_name, "working", timestamp)
+    set_agent_tool(session_id, tool)
+    return 0
+
+
+def cmd_internal_hook_post_tool_use(
+    session_id: str, project_dir: str, tool: str, timestamp: int
+) -> int:
+    project_name = _project_name(project_dir)
+    if project_name is None:
+        return 0
+    set_agent_status(session_id, project_name, "working", timestamp)
+    reset_agent_tool(session_id)
+    return 0
+
+
+def cmd_internal_hook_permission_request(
+    session_id: str, project_dir: str, tool: str, timestamp: int
+) -> int:
+    project_name = _project_name(project_dir)
+    if project_name is None:
+        return 0
+    set_agent_status(session_id, project_name, "waiting_permission", timestamp)
+    set_agent_tool(session_id, tool)
+    return 0
+
+
+def cmd_internal_hook_stop(
+    session_id: str, project_dir: str, timestamp: int
+) -> int:
+    project_name = _project_name(project_dir)
+    if project_name is None:
+        return 0
+    set_agent_status(session_id, project_name, "waiting_prompt", timestamp)
     return 0
 
 
@@ -531,18 +563,36 @@ def main() -> None:
     internal_sub = p_internal.add_subparsers(
         dest="internal_command", required=True
     )
-    p_agent_event = internal_sub.add_parser("agent_event")
-    p_agent_event.add_argument("session_id")
-    p_agent_event.add_argument("project_dir")
-    p_agent_event.add_argument("status")
-    p_agent_event.add_argument("timestamp", type=int)
-    p_agent_tool = internal_sub.add_parser("agent_tool")
-    p_agent_tool.add_argument("session_id")
-    p_agent_tool.add_argument("project_dir")
-    p_agent_tool.add_argument("tool")
-    p_agent_tool.add_argument("timestamp", type=int)
     p_agent_remove = internal_sub.add_parser("agent_remove")
     p_agent_remove.add_argument("session_id")
+
+    p_claude = sub.add_parser("_claude")
+    claude_sub = p_claude.add_subparsers(dest="claude_command", required=True)
+    p_hook_session_start = claude_sub.add_parser("hook_session_start")
+    p_hook_session_start.add_argument("session_id")
+    p_hook_session_start.add_argument("timestamp", type=int)
+    p_hook_session_end = claude_sub.add_parser("hook_session_end")
+    p_hook_session_end.add_argument("session_id")
+    p_hook_session_end.add_argument("timestamp", type=int)
+    p_hook_pre_tool_use = claude_sub.add_parser("hook_pre_tool_use")
+    p_hook_pre_tool_use.add_argument("session_id")
+    p_hook_pre_tool_use.add_argument("project_dir")
+    p_hook_pre_tool_use.add_argument("tool")
+    p_hook_pre_tool_use.add_argument("timestamp", type=int)
+    p_hook_post_tool_use = claude_sub.add_parser("hook_post_tool_use")
+    p_hook_post_tool_use.add_argument("session_id")
+    p_hook_post_tool_use.add_argument("project_dir")
+    p_hook_post_tool_use.add_argument("tool")
+    p_hook_post_tool_use.add_argument("timestamp", type=int)
+    p_hook_permission_request = claude_sub.add_parser("hook_permission_request")
+    p_hook_permission_request.add_argument("session_id")
+    p_hook_permission_request.add_argument("project_dir")
+    p_hook_permission_request.add_argument("tool")
+    p_hook_permission_request.add_argument("timestamp", type=int)
+    p_hook_stop = claude_sub.add_parser("hook_stop")
+    p_hook_stop.add_argument("session_id")
+    p_hook_stop.add_argument("project_dir")
+    p_hook_stop.add_argument("timestamp", type=int)
 
     argcomplete.autocomplete(parser, always_complete_options=False)
     args = parser.parse_args()
@@ -574,20 +624,38 @@ def main() -> None:
         elif args.agent_command == "clear":
             sys.exit(cmd_agent_clear(args.id))
     elif args.command == "_internal":
-        if args.internal_command == "agent_event":
+        if args.internal_command == "agent_remove":
+            sys.exit(cmd_internal_agent_remove(args.session_id))
+    elif args.command == "_claude":
+        if args.claude_command == "hook_session_start":
             sys.exit(
-                cmd_internal_agent_event(
-                    args.session_id,
-                    args.project_dir,
-                    args.status,
-                    args.timestamp,
-                )
+                cmd_internal_hook_session_start(args.session_id, args.timestamp)
             )
-        elif args.internal_command == "agent_tool":
+        elif args.claude_command == "hook_session_end":
             sys.exit(
-                cmd_internal_agent_tool(
+                cmd_internal_hook_session_end(args.session_id, args.timestamp)
+            )
+        elif args.claude_command == "hook_pre_tool_use":
+            sys.exit(
+                cmd_internal_hook_pre_tool_use(
                     args.session_id, args.project_dir, args.tool, args.timestamp
                 )
             )
-        elif args.internal_command == "agent_remove":
-            sys.exit(cmd_internal_agent_remove(args.session_id))
+        elif args.claude_command == "hook_post_tool_use":
+            sys.exit(
+                cmd_internal_hook_post_tool_use(
+                    args.session_id, args.project_dir, args.tool, args.timestamp
+                )
+            )
+        elif args.claude_command == "hook_permission_request":
+            sys.exit(
+                cmd_internal_hook_permission_request(
+                    args.session_id, args.project_dir, args.tool, args.timestamp
+                )
+            )
+        elif args.claude_command == "hook_stop":
+            sys.exit(
+                cmd_internal_hook_stop(
+                    args.session_id, args.project_dir, args.timestamp
+                )
+            )
