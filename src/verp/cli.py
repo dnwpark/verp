@@ -82,6 +82,11 @@ def get_current_worktree() -> Worktree | None:
 
 
 def cmd_new(name: str, repos: list[str]) -> int:
+    name = name.strip("/")
+    if "/" in name:
+        err(f"invalid project name '{name}': must not contain '/'")
+        return 1
+
     branch = f"{BRANCH_PREFIX}/{name}"
     project_dir = Path.cwd() / name
 
