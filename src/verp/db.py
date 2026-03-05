@@ -17,7 +17,7 @@ class ProjectInfo:
 @dataclass
 class AgentInfo:
     session_id: str
-    project: str
+    directory: str
     status: str
     tool: str | None
     updated_at: int
@@ -27,7 +27,7 @@ DATA_DIR = Path.home() / ".local" / "share" / "verp"
 DB_PATH = DATA_DIR / "verp.db"
 _VERSIONS_DIR = Path(__file__).parent / "_versions"
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 
 def _db() -> sqlite3.Connection:
@@ -90,6 +90,19 @@ def _migrate_to_v11(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_to_v13(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP TABLE IF EXISTS agents")
+    conn.execute("""
+        CREATE TABLE agents (
+            session_id  TEXT PRIMARY KEY,
+            directory   TEXT NOT NULL,
+            status      TEXT NOT NULL,
+            tool        TEXT,
+            updated_at  INTEGER NOT NULL
+        )
+    """)
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
@@ -103,6 +116,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     10: lambda conn: None,
     11: _migrate_to_v11,
     12: lambda conn: None,
+    13: _migrate_to_v13,
 }
 
 
@@ -273,19 +287,19 @@ def is_project_dir(path: Path) -> bool:
 
 
 def set_agent_status(
-    session_id: str, project_name: str, status: str, timestamp: int
+    session_id: str, directory: str, status: str, timestamp: int
 ) -> None:
     """Create agent if needed and set status. Uses timestamp guard."""
     conn = _db()
     with conn:
         conn.execute(
-            "INSERT INTO agents (session_id, project_name, status, tool, updated_at)"
+            "INSERT INTO agents (session_id, directory, status, tool, updated_at)"
             " VALUES (?, ?, ?, NULL, ?)"
             " ON CONFLICT(session_id) DO UPDATE SET"
             "     status = excluded.status,"
             "     updated_at = excluded.updated_at"
             " WHERE excluded.updated_at >= agents.updated_at",
-            (session_id, project_name, status, timestamp),
+            (session_id, directory, status, timestamp),
         )
     conn.close()
 
@@ -339,14 +353,14 @@ def get_all_agents() -> list[AgentInfo]:
         return []
     conn = _db()
     rows = conn.execute(
-        "SELECT session_id, project_name, status, tool, updated_at"
-        " FROM agents WHERE project_name IS NOT NULL ORDER BY updated_at DESC"
+        "SELECT session_id, directory, status, tool, updated_at"
+        " FROM agents ORDER BY updated_at DESC"
     ).fetchall()
     conn.close()
     return [
         AgentInfo(
             session_id=str(row["session_id"]),
-            project=str(row["project_name"]),
+            directory=str(row["directory"]),
             status=str(row["status"]),
             tool=str(row["tool"]) if row["tool"] is not None else None,
             updated_at=int(row["updated_at"]),

@@ -395,6 +395,20 @@ def cmd_pull() -> int:
     return rc
 
 
+def _format_directory(directory: str) -> str:
+    path = Path(directory)
+    if is_project_dir(path):
+        return path.name
+    for p in path.parents:
+        if is_project_dir(p):
+            return f"{p.name}/{path.relative_to(p)}"
+    home = Path.home()
+    try:
+        return f"~/{path.relative_to(home)}"
+    except ValueError:
+        return directory
+
+
 def cmd_agent_list() -> int:
     agents = get_all_agents()
     if not agents:
@@ -407,7 +421,7 @@ def cmd_agent_list() -> int:
             f"{agent.status} ({agent.tool})" if agent.tool else agent.status
         )
         console.print(
-            f"  [bold]{sid}[/bold]  {agent.project}"
+            f"  [bold]{sid}[/bold]  {_format_directory(agent.directory)}"
             f"  [{color}]{status_str}[/{color}]"
             f"  [grey70]{format_age(agent.updated_at)}[/grey70]"
         )
@@ -423,11 +437,6 @@ def cmd_agent_clear(session_id: str) -> int:
     return 0
 
 
-def _project_name(project_dir: str) -> str | None:
-    p = Path(project_dir)
-    return p.name if project_dir and is_project_dir(p) else None
-
-
 def cmd_internal_hook_session_start(session_id: str, timestamp: int) -> int:
     return 0
 
@@ -438,66 +447,60 @@ def cmd_internal_hook_session_end(session_id: str, timestamp: int) -> int:
 
 
 def cmd_internal_hook_pre_tool_use(
-    session_id: str, project_dir: str, tool: str, timestamp: int
+    session_id: str, directory: str, tool: str, timestamp: int
 ) -> int:
-    project_name = _project_name(project_dir)
-    if project_name is None:
+    if not directory:
         return 0
-    set_agent_status(session_id, project_name, "working", timestamp)
+    set_agent_status(session_id, directory, "working", timestamp)
     set_agent_tool(session_id, tool)
     return 0
 
 
 def cmd_internal_hook_post_tool_use(
-    session_id: str, project_dir: str, tool: str, timestamp: int
+    session_id: str, directory: str, tool: str, timestamp: int
 ) -> int:
-    project_name = _project_name(project_dir)
-    if project_name is None:
+    if not directory:
         return 0
-    set_agent_status(session_id, project_name, "working", timestamp)
+    set_agent_status(session_id, directory, "working", timestamp)
     reset_agent_tool(session_id)
     return 0
 
 
 def cmd_internal_hook_permission_request(
-    session_id: str, project_dir: str, tool: str, timestamp: int
+    session_id: str, directory: str, tool: str, timestamp: int
 ) -> int:
-    project_name = _project_name(project_dir)
-    if project_name is None:
+    if not directory:
         return 0
-    set_agent_status(session_id, project_name, "waiting_permission", timestamp)
+    set_agent_status(session_id, directory, "waiting_permission", timestamp)
     set_agent_tool(session_id, tool)
     return 0
 
 
 def cmd_internal_hook_post_tool_use_failure(
-    session_id: str, project_dir: str, tool: str, timestamp: int
+    session_id: str, directory: str, tool: str, timestamp: int
 ) -> int:
-    project_name = _project_name(project_dir)
-    if project_name is None:
+    if not directory:
         return 0
-    set_agent_status(session_id, project_name, "waiting_prompt", timestamp)
+    set_agent_status(session_id, directory, "waiting_prompt", timestamp)
     reset_agent_tool(session_id)
     return 0
 
 
 def cmd_internal_hook_user_prompt_submit(
-    session_id: str, project_dir: str, timestamp: int
+    session_id: str, directory: str, timestamp: int
 ) -> int:
-    project_name = _project_name(project_dir)
-    if project_name is None:
+    if not directory:
         return 0
-    set_agent_status(session_id, project_name, "working", timestamp)
+    set_agent_status(session_id, directory, "working", timestamp)
     return 0
 
 
 def cmd_internal_hook_stop(
-    session_id: str, project_dir: str, timestamp: int
+    session_id: str, directory: str, timestamp: int
 ) -> int:
-    project_name = _project_name(project_dir)
-    if project_name is None:
+    if not directory:
         return 0
-    set_agent_status(session_id, project_name, "waiting_prompt", timestamp)
+    set_agent_status(session_id, directory, "waiting_prompt", timestamp)
     return 0
 
 
@@ -612,33 +615,33 @@ def main() -> None:
     p_hook_session_end.add_argument("timestamp", type=int)
     p_hook_pre_tool_use = claude_sub.add_parser("hook_pre_tool_use")
     p_hook_pre_tool_use.add_argument("session_id")
-    p_hook_pre_tool_use.add_argument("project_dir")
+    p_hook_pre_tool_use.add_argument("directory")
     p_hook_pre_tool_use.add_argument("tool")
     p_hook_pre_tool_use.add_argument("timestamp", type=int)
     p_hook_post_tool_use_failure = claude_sub.add_parser(
         "hook_post_tool_use_failure"
     )
     p_hook_post_tool_use_failure.add_argument("session_id")
-    p_hook_post_tool_use_failure.add_argument("project_dir")
+    p_hook_post_tool_use_failure.add_argument("directory")
     p_hook_post_tool_use_failure.add_argument("tool")
     p_hook_post_tool_use_failure.add_argument("timestamp", type=int)
     p_hook_post_tool_use = claude_sub.add_parser("hook_post_tool_use")
     p_hook_post_tool_use.add_argument("session_id")
-    p_hook_post_tool_use.add_argument("project_dir")
+    p_hook_post_tool_use.add_argument("directory")
     p_hook_post_tool_use.add_argument("tool")
     p_hook_post_tool_use.add_argument("timestamp", type=int)
     p_hook_permission_request = claude_sub.add_parser("hook_permission_request")
     p_hook_permission_request.add_argument("session_id")
-    p_hook_permission_request.add_argument("project_dir")
+    p_hook_permission_request.add_argument("directory")
     p_hook_permission_request.add_argument("tool")
     p_hook_permission_request.add_argument("timestamp", type=int)
     p_hook_user_prompt_submit = claude_sub.add_parser("hook_user_prompt_submit")
     p_hook_user_prompt_submit.add_argument("session_id")
-    p_hook_user_prompt_submit.add_argument("project_dir")
+    p_hook_user_prompt_submit.add_argument("directory")
     p_hook_user_prompt_submit.add_argument("timestamp", type=int)
     p_hook_stop = claude_sub.add_parser("hook_stop")
     p_hook_stop.add_argument("session_id")
-    p_hook_stop.add_argument("project_dir")
+    p_hook_stop.add_argument("directory")
     p_hook_stop.add_argument("timestamp", type=int)
 
     argcomplete.autocomplete(parser, always_complete_options=False)
@@ -685,37 +688,37 @@ def main() -> None:
         elif args.claude_command == "hook_pre_tool_use":
             sys.exit(
                 cmd_internal_hook_pre_tool_use(
-                    args.session_id, args.project_dir, args.tool, args.timestamp
+                    args.session_id, args.directory, args.tool, args.timestamp
                 )
             )
         elif args.claude_command == "hook_post_tool_use_failure":
             sys.exit(
                 cmd_internal_hook_post_tool_use_failure(
-                    args.session_id, args.project_dir, args.tool, args.timestamp
+                    args.session_id, args.directory, args.tool, args.timestamp
                 )
             )
         elif args.claude_command == "hook_post_tool_use":
             sys.exit(
                 cmd_internal_hook_post_tool_use(
-                    args.session_id, args.project_dir, args.tool, args.timestamp
+                    args.session_id, args.directory, args.tool, args.timestamp
                 )
             )
         elif args.claude_command == "hook_permission_request":
             sys.exit(
                 cmd_internal_hook_permission_request(
-                    args.session_id, args.project_dir, args.tool, args.timestamp
+                    args.session_id, args.directory, args.tool, args.timestamp
                 )
             )
         elif args.claude_command == "hook_user_prompt_submit":
             sys.exit(
                 cmd_internal_hook_user_prompt_submit(
-                    args.session_id, args.project_dir, args.timestamp
+                    args.session_id, args.directory, args.timestamp
                 )
             )
         elif args.claude_command == "hook_stop":
             sys.exit(
                 cmd_internal_hook_stop(
-                    args.session_id, args.project_dir, args.timestamp
+                    args.session_id, args.directory, args.timestamp
                 )
             )
     elif args.command == "claude":
