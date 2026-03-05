@@ -105,6 +105,18 @@ def _migration_v8(project_info: ProjectInfo) -> None:
     dst.chmod(0o755)
 
 
+def _migration_v9(project_info: ProjectInfo) -> None:
+    v9 = _VERSIONS_DIR / "9"
+    claude_dir = Path(project_info.path) / ".claude"
+    hooks_dir = claude_dir / "hooks"
+
+    shutil.copy2(v9 / "claude_settings.json", claude_dir / "settings.json")
+
+    dst = hooks_dir / "track.sh"
+    shutil.copy2(v9 / "track.sh", dst)
+    dst.chmod(0o755)
+
+
 _MIGRATIONS: dict[int, Callable[[ProjectInfo], None]] = {
     3: _migration_v3,
     4: _migration_v4,
@@ -112,6 +124,7 @@ _MIGRATIONS: dict[int, Callable[[ProjectInfo], None]] = {
     6: _migration_v6,
     7: _migration_v7,
     8: _migration_v8,
+    9: _migration_v9,
 }
 
 

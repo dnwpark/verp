@@ -468,6 +468,16 @@ def cmd_internal_hook_permission_request(
     return 0
 
 
+def cmd_internal_hook_user_prompt_submit(
+    session_id: str, project_dir: str, timestamp: int
+) -> int:
+    project_name = _project_name(project_dir)
+    if project_name is None:
+        return 0
+    set_agent_status(session_id, project_name, "working", timestamp)
+    return 0
+
+
 def cmd_internal_hook_stop(
     session_id: str, project_dir: str, timestamp: int
 ) -> int:
@@ -589,6 +599,10 @@ def main() -> None:
     p_hook_permission_request.add_argument("project_dir")
     p_hook_permission_request.add_argument("tool")
     p_hook_permission_request.add_argument("timestamp", type=int)
+    p_hook_user_prompt_submit = claude_sub.add_parser("hook_user_prompt_submit")
+    p_hook_user_prompt_submit.add_argument("session_id")
+    p_hook_user_prompt_submit.add_argument("project_dir")
+    p_hook_user_prompt_submit.add_argument("timestamp", type=int)
     p_hook_stop = claude_sub.add_parser("hook_stop")
     p_hook_stop.add_argument("session_id")
     p_hook_stop.add_argument("project_dir")
@@ -651,6 +665,12 @@ def main() -> None:
             sys.exit(
                 cmd_internal_hook_permission_request(
                     args.session_id, args.project_dir, args.tool, args.timestamp
+                )
+            )
+        elif args.claude_command == "hook_user_prompt_submit":
+            sys.exit(
+                cmd_internal_hook_user_prompt_submit(
+                    args.session_id, args.project_dir, args.timestamp
                 )
             )
         elif args.claude_command == "hook_stop":
