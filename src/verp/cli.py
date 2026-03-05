@@ -468,6 +468,17 @@ def cmd_internal_hook_permission_request(
     return 0
 
 
+def cmd_internal_hook_post_tool_use_failure(
+    session_id: str, project_dir: str, tool: str, timestamp: int
+) -> int:
+    project_name = _project_name(project_dir)
+    if project_name is None:
+        return 0
+    set_agent_status(session_id, project_name, "waiting_prompt", timestamp)
+    reset_agent_tool(session_id)
+    return 0
+
+
 def cmd_internal_hook_user_prompt_submit(
     session_id: str, project_dir: str, timestamp: int
 ) -> int:
@@ -589,6 +600,13 @@ def main() -> None:
     p_hook_pre_tool_use.add_argument("project_dir")
     p_hook_pre_tool_use.add_argument("tool")
     p_hook_pre_tool_use.add_argument("timestamp", type=int)
+    p_hook_post_tool_use_failure = claude_sub.add_parser(
+        "hook_post_tool_use_failure"
+    )
+    p_hook_post_tool_use_failure.add_argument("session_id")
+    p_hook_post_tool_use_failure.add_argument("project_dir")
+    p_hook_post_tool_use_failure.add_argument("tool")
+    p_hook_post_tool_use_failure.add_argument("timestamp", type=int)
     p_hook_post_tool_use = claude_sub.add_parser("hook_post_tool_use")
     p_hook_post_tool_use.add_argument("session_id")
     p_hook_post_tool_use.add_argument("project_dir")
@@ -652,6 +670,12 @@ def main() -> None:
         elif args.claude_command == "hook_pre_tool_use":
             sys.exit(
                 cmd_internal_hook_pre_tool_use(
+                    args.session_id, args.project_dir, args.tool, args.timestamp
+                )
+            )
+        elif args.claude_command == "hook_post_tool_use_failure":
+            sys.exit(
+                cmd_internal_hook_post_tool_use_failure(
                     args.session_id, args.project_dir, args.tool, args.timestamp
                 )
             )

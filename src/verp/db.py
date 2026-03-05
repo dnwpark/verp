@@ -25,7 +25,7 @@ class AgentInfo:
 DATA_DIR = Path.home() / ".local" / "share" / "verp"
 DB_PATH = DATA_DIR / "verp.db"
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 def _db() -> sqlite3.Connection:
@@ -86,6 +86,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     7: lambda conn: None,
     8: lambda conn: None,
     9: lambda conn: None,
+    10: lambda conn: None,
 }
 
 
