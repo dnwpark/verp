@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import argcomplete
+import os
 import shutil
 import sys
 import textwrap
@@ -8,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from verp.db import (
+    DATA_DIR,
     SCHEMA_VERSION,
     ProjectInfo,
     add_project,
@@ -504,6 +506,13 @@ def cmd_internal_agent_remove(session_id: str) -> int:
     return 0
 
 
+def cmd_claude(args: list[str]) -> int:
+    settings = DATA_DIR / "claude-settings.json"
+    cmd = ["claude", "--settings", str(settings)] + args
+    os.execvp("claude", cmd)
+    return 0  # unreachable
+
+
 def main() -> None:
     init_db()
     for project_info in all_project_infos():
@@ -515,6 +524,7 @@ def main() -> None:
           pull                     pull repos and fetch worktrees
           repo                     manage git repos
           agent                    manage agents
+          claude [args...]         launch claude with verp hooks
 
         project:
           status                   show git status of each worktree
@@ -579,6 +589,11 @@ def main() -> None:
     agent_sub.add_parser("list", help="list all agents")
     p_agent_clear = agent_sub.add_parser("clear", help="clear an agent entry")
     p_agent_clear.add_argument("id", help="session ID prefix")
+
+    p_verp_claude = sub.add_parser(
+        "claude", help="launch claude with verp hooks"
+    )
+    p_verp_claude.add_argument("args", nargs=argparse.REMAINDER)
 
     p_internal = sub.add_parser("_internal")
     internal_sub = p_internal.add_subparsers(
@@ -703,3 +718,5 @@ def main() -> None:
                     args.session_id, args.project_dir, args.timestamp
                 )
             )
+    elif args.command == "claude":
+        sys.exit(cmd_claude(args.args))
