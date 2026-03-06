@@ -6,9 +6,9 @@ import json
 import os
 import pty
 import select
-import shutil
 import signal
 import socket
+import subprocess
 import sys
 import termios
 import tty
@@ -285,7 +285,7 @@ def cmd_delete() -> int:
                 )
                 return 1
 
-    shutil.rmtree(project_dir)
+    subprocess.run(["rm", "-rf", str(project_dir)], check=True)
     delete_project(name)
     print(f"deleted '{name}'")
     return 0
