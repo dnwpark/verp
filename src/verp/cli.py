@@ -64,6 +64,7 @@ from verp.git import (
 )
 from verp.agent import format_age
 from verp.project import init_project, setup_new
+from rich.live import Live
 from rich.table import Table
 
 from verp.status import console, print_repo_status, print_untracked_repo_status
@@ -429,11 +430,19 @@ def cmd_agent_list() -> int:
     if not agents:
         print("no agents")
         return 0
+    console.print(_build_agent_table())
+    return 0
+
+
+def _build_agent_table() -> Table:
+    agents = get_all_agents()
     table = Table(box=None, padding=(0, 2), show_header=False, highlight=False)
     table.add_column()
     table.add_column()
     table.add_column()
     table.add_column()
+    if not agents:
+        table.add_row("[grey70]no agents[/grey70]", "", "", "")
     for agent in agents:
         sid = agent.session_id[:8]
         color = "green" if agent.status == "working" else "dark_orange"
@@ -446,7 +455,23 @@ def cmd_agent_list() -> int:
             f"[{color}]{status_str}[/{color}]",
             f"[grey70]{format_age(agent.updated_at)}[/grey70]",
         )
-    console.print(table)
+    return table
+
+
+def cmd_agent_monitor() -> int:
+    import time
+
+    try:
+        with Live(
+            _build_agent_table(),
+            console=console,
+            refresh_per_second=2,
+        ) as live:
+            while True:
+                time.sleep(0.5)
+                live.update(_build_agent_table())
+    except KeyboardInterrupt:
+        pass
     return 0
 
 
@@ -660,6 +685,7 @@ def main() -> None:
     p_agent = sub.add_parser("agent", help="manage agents")
     agent_sub = p_agent.add_subparsers(dest="agent_command", required=True)
     agent_sub.add_parser("list", help="list all agents")
+    agent_sub.add_parser("monitor", help="live-updating agent monitor")
     p_agent_clear = agent_sub.add_parser("clear", help="clear an agent entry")
     p_agent_clear.add_argument("id", help="session ID prefix")
 
@@ -741,6 +767,8 @@ def main() -> None:
     elif args.command == "agent":
         if args.agent_command == "list":
             sys.exit(cmd_agent_list())
+        elif args.agent_command == "monitor":
+            sys.exit(cmd_agent_monitor())
         elif args.agent_command == "clear":
             sys.exit(cmd_agent_clear(args.id))
     elif args.command == "_claude":
