@@ -542,7 +542,6 @@ def cmd_claude(args: list[str]) -> int:
     stdin_fd = sys.stdin.fileno()
     old = termios.tcgetattr(stdin_fd)
     tty.setraw(stdin_fd)
-    session_allowed: set[str] = set()
     try:
         while True:
             try:
@@ -562,7 +561,7 @@ def cmd_claude(args: list[str]) -> int:
                 os.write(master_fd, data)
             if listen_sock in fds:
                 conn, _ = listen_sock.accept()
-                handle_permission_request(conn, stdin_fd, session_allowed)
+                handle_permission_request(conn, stdin_fd)
     finally:
         termios.tcsetattr(stdin_fd, termios.TCSAFLUSH, old)
         os.close(master_fd)

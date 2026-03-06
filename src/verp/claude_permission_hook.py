@@ -18,9 +18,7 @@ class PermissionDecision:
     updated_input: dict[str, str] | None = (
         None  # allow only: modifies tool input
     )
-    updated_permissions: list[dict[str, str]] | None = (
-        None  # allow only: applies "always allow" rules
-    )
+    updated_permissions: list[dict[str, object]] | None = None
     message: str | None = None  # deny only: tells Claude why
     interrupt: bool = False  # deny only: stops Claude
 
@@ -66,7 +64,7 @@ def _show_permission_dialog(
     tool: str,
     tool_input: dict[str, str],
     stdin_fd: int,
-    session_allowed: set[str],
+    permission_suggestions: list[dict[str, object]],
 ) -> PermissionDecision:
     stdout_fd = sys.stdout.fileno()
 
@@ -128,13 +126,14 @@ def _show_permission_dialog(
 
     _clear_dialog()
     if selected == 1:
-        session_allowed.add(tool)
+        return PermissionDecision(
+            "allow",
+            updated_permissions=permission_suggestions or None,
+        )
     return PermissionDecision("allow" if selected < 2 else "deny")
 
 
-def handle_permission_request(
-    conn: socket.socket, stdin_fd: int, session_allowed: set[str]
-) -> None:
+def handle_permission_request(conn: socket.socket, stdin_fd: int) -> None:
     try:
         chunks = []
         while chunk := conn.recv(4096):
@@ -147,12 +146,10 @@ def handle_permission_request(
 
     tool = req.get("tool", "unknown")
     tool_input = req.get("input", {})
-    if tool in session_allowed:
-        decision = PermissionDecision("allow")
-    else:
-        decision = _show_permission_dialog(
-            tool, tool_input, stdin_fd, session_allowed
-        )
+    permission_suggestions = req.get("permission_suggestions", [])
+    decision = _show_permission_dialog(
+        tool, tool_input, stdin_fd, permission_suggestions
+    )
     conn.sendall(json.dumps(asdict(decision)).encode())
     conn.close()
 
@@ -171,13 +168,23 @@ def cmd_internal_hook_permission_request(
     try:
         data = json.loads(sys.stdin.read())
         tool_input = data.get("tool_input", {})
+        permission_suggestions = data.get("permission_suggestions", [])
     except Exception:
         tool_input = {}
+        permission_suggestions = []
 
     try:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.connect(sock_path)
-        sock.sendall(json.dumps({"tool": tool, "input": tool_input}).encode())
+        sock.sendall(
+            json.dumps(
+                {
+                    "tool": tool,
+                    "input": tool_input,
+                    "permission_suggestions": permission_suggestions,
+                }
+            ).encode()
+        )
         sock.shutdown(socket.SHUT_WR)
         raw = b""
         while chunk := sock.recv(4096):
