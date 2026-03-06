@@ -2,17 +2,23 @@
 import argparse
 import argcomplete
 import fcntl
+import json
 import os
 import pty
 import select
 import shutil
 import signal
-import struct
+import socket
 import sys
 import termios
 import tty
 import textwrap
 from dataclasses import dataclass
+
+from verp.claude_permission_hook import (
+    cmd_internal_hook_permission_request,
+    handle_permission_request,
+)
 from pathlib import Path
 
 from verp.db import (
@@ -482,16 +488,6 @@ def cmd_internal_hook_post_tool_use(
     return 0
 
 
-def cmd_internal_hook_permission_request(
-    session_id: str, directory: str, tool: str, timestamp: int
-) -> int:
-    if not directory:
-        return 0
-    set_agent_status(session_id, directory, "waiting_permission", timestamp)
-    set_agent_tool(session_id, tool)
-    return 0
-
-
 def cmd_internal_hook_post_tool_use_failure(
     session_id: str, directory: str, tool: str, timestamp: int
 ) -> int:
@@ -529,8 +525,15 @@ def cmd_claude(args: list[str]) -> int:
     settings = DATA_DIR / "claude-settings.json"
     cmd = ["claude", "--settings", str(settings)] + args
 
+    sock_path = f"/tmp/verp-{os.getpid()}.sock"
+    listen_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listen_sock.bind(sock_path)
+    listen_sock.listen(1)
+
     pid, master_fd = pty.fork()
     if pid == 0:
+        listen_sock.close()
+        os.environ["VERP_SOCKET"] = sock_path
         os.execvp(cmd[0], cmd)
 
     _set_winsize(master_fd)
@@ -539,10 +542,13 @@ def cmd_claude(args: list[str]) -> int:
     stdin_fd = sys.stdin.fileno()
     old = termios.tcgetattr(stdin_fd)
     tty.setraw(stdin_fd)
+    session_allowed: set[str] = set()
     try:
         while True:
             try:
-                fds, _, _ = select.select([master_fd, sys.stdin], [], [])
+                fds, _, _ = select.select(
+                    [master_fd, sys.stdin, listen_sock], [], []
+                )
             except (KeyboardInterrupt, OSError):
                 break
             if master_fd in fds:
@@ -554,9 +560,17 @@ def cmd_claude(args: list[str]) -> int:
             if sys.stdin in fds:
                 data = os.read(stdin_fd, 1024)
                 os.write(master_fd, data)
+            if listen_sock in fds:
+                conn, _ = listen_sock.accept()
+                handle_permission_request(conn, stdin_fd, session_allowed)
     finally:
         termios.tcsetattr(stdin_fd, termios.TCSAFLUSH, old)
         os.close(master_fd)
+        listen_sock.close()
+        try:
+            os.unlink(sock_path)
+        except OSError:
+            pass
 
     _, status = os.waitpid(pid, 0)
     return os.waitstatus_to_exitcode(status)

@@ -27,7 +27,7 @@ DATA_DIR = Path.home() / ".local" / "share" / "verp"
 DB_PATH = DATA_DIR / "verp.db"
 _VERSIONS_DIR = Path(__file__).parent / "_versions"
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 
 def _db() -> sqlite3.Connection:
@@ -96,6 +96,12 @@ def _migrate_to_v14(conn: sqlite3.Connection) -> None:
     track.chmod(0o755)
 
 
+def _migrate_to_v15(conn: sqlite3.Connection) -> None:
+    track = DATA_DIR / "track.sh"
+    shutil.copy2(_VERSIONS_DIR / "15" / "track.sh", track)
+    track.chmod(0o755)
+
+
 def _migrate_to_v13(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS agents")
     conn.execute("""
@@ -124,6 +130,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     12: lambda conn: None,
     13: _migrate_to_v13,
     14: _migrate_to_v14,
+    15: _migrate_to_v15,
 }
 
 
