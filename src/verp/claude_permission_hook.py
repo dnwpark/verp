@@ -69,6 +69,7 @@ def _show_permission_dialog(
     stdout_fd = sys.stdout.fileno()
 
     question = _format_question(tool, tool_input)
+    os.write(stdout_fd, b"\x1b[6A\r\x1b[J")
     os.write(stdout_fd, f"\r\n \x1b[1m{question}\x1b[0m\r\n\r\n".encode())
 
     selected = 0
