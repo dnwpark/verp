@@ -199,6 +199,13 @@ def cmd_internal_hook_permission_request(
     except Exception:
         return 0
 
+    if directory and decision.behavior == "allow":
+        import time
+
+        set_agent_status(
+            session_id, directory, "working", int(time.time() * 1000)
+        )
+
     decision_obj: dict[str, object] = {"behavior": decision.behavior}
     if decision.updated_input is not None:
         decision_obj["updatedInput"] = decision.updated_input
