@@ -110,7 +110,7 @@ def _show_permission_dialog(
             r, _, _ = select.select([stdin_fd], [], [], 0.05)
             if not r:
                 _clear_dialog()
-                return PermissionDecision("deny")
+                return PermissionDecision("deny", interrupt=True)
             in_escape = True
             continue
         if ch in (b"y", b"Y"):
@@ -131,7 +131,9 @@ def _show_permission_dialog(
             "allow",
             updated_permissions=permission_suggestions or None,
         )
-    return PermissionDecision("allow" if selected < 2 else "deny")
+    if selected == 2:
+        return PermissionDecision("deny", interrupt=True)
+    return PermissionDecision("allow")
 
 
 def handle_permission_request(conn: socket.socket, stdin_fd: int) -> None:
