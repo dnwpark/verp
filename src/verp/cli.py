@@ -558,7 +558,10 @@ def cmd_claude(args: list[str]) -> int:
                 os.write(sys.stdout.fileno(), data)
             if sys.stdin in fds:
                 data = os.read(stdin_fd, 1024)
-                os.write(master_fd, data)
+                try:
+                    os.write(master_fd, data)
+                except OSError:
+                    break
             if listen_sock in fds:
                 conn, _ = listen_sock.accept()
                 handle_permission_request(conn, stdin_fd)
