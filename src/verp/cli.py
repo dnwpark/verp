@@ -46,6 +46,7 @@ from verp.git import (
     REPO_DIR,
     ahead_behind,
     branch_delete,
+    branch_exists,
     clone,
     current_branch,
     extra_git_dirs,
@@ -276,12 +277,13 @@ def cmd_delete() -> int:
                     f"failed to remove worktree for {repo}: {result.stderr.strip()}"
                 )
                 return 1
-        result = branch_delete(rp, branch)
-        if result.returncode != 0:
-            err(
-                f"failed to delete branch {branch} in {repo}: {result.stderr.strip()}"
-            )
-            return 1
+        if branch_exists(rp, branch):
+            result = branch_delete(rp, branch)
+            if result.returncode != 0:
+                err(
+                    f"failed to delete branch {branch} in {repo}: {result.stderr.strip()}"
+                )
+                return 1
 
     shutil.rmtree(project_dir)
     delete_project(name)

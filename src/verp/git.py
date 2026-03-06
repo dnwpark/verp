@@ -100,6 +100,17 @@ def worktree_remove(
     )
 
 
+def branch_exists(repo_dir: Path, branch: str) -> bool:
+    return (
+        run(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+            cwd=repo_dir,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
 def branch_delete(
     repo_dir: Path, branch: str
 ) -> subprocess.CompletedProcess[str]:
