@@ -80,7 +80,7 @@ def _show_permission_dialog(
     termios.tcflush(stdin_fd, termios.TCIFLUSH)
 
     def _clear_dialog() -> None:
-        os.write(stdout_fd, b"\x1b[6A\r\x1b[0J")
+        os.write(stdout_fd, b"\x1b[1A\r\x1b[K" * 6 + b"\x1b[1A")
         termios.tcflush(stdin_fd, termios.TCIFLUSH)
 
     in_escape = False
@@ -126,10 +126,7 @@ def _show_permission_dialog(
         if ch in (b"\r", b"\n", b" "):
             break
 
-    termios.tcflush(stdin_fd, termios.TCIFLUSH)
-    os.write(stdout_fd, b"\x1b[4A")
-    _render_options(stdout_fd, selected, tool)
-    os.write(stdout_fd, b"\x1b[0J\r\n")
+    _clear_dialog()
     if selected == 1:
         session_allowed.add(tool)
     return PermissionDecision("allow" if selected < 2 else "deny")
