@@ -46,10 +46,33 @@ def _format_question(tool: str, tool_input: dict[str, str]) -> str:
         return f"Allow {tool}?"
 
 
-def _render_options(stdout_fd: int, selected: int, tool: str) -> None:
+def _session_allow_label(
+    tool: str, permission_suggestions: list[dict[str, object]]
+) -> str:
+    if permission_suggestions:
+        s = permission_suggestions[0]
+        if s.get("type") == "toolAlwaysAllow":
+            return f"Yes, always allow {s.get('tool', tool)}"
+        if s.get("type") == "addRules":
+            rules = s.get("rules") or []
+            if rules and isinstance(rules, list):
+                r = rules[0]
+                name = r.get("toolName", tool)
+                content = r.get("ruleContent", "")
+                rule_str = f"{name}({content})" if content else str(name)
+                return f"Yes, always allow {rule_str}"
+    return f"Yes, allow {tool} this session"
+
+
+def _render_options(
+    stdout_fd: int,
+    selected: int,
+    tool: str,
+    permission_suggestions: list[dict[str, object]],
+) -> None:
     options = [
         "Yes",
-        f"Yes, allow {tool} this session",
+        _session_allow_label(tool, permission_suggestions),
         "No",
     ]
     for i, label in enumerate(options):
@@ -73,7 +96,7 @@ def _show_permission_dialog(
     os.write(stdout_fd, f"\r\n \x1b[1m{question}\x1b[0m\r\n\r\n".encode())
 
     selected = 0
-    _render_options(stdout_fd, selected, tool)
+    _render_options(stdout_fd, selected, tool, permission_suggestions)
     os.write(stdout_fd, " \x1b[2mEsc to cancel\x1b[0m\r\n".encode())
 
     termios.tcflush(stdin_fd, termios.TCIFLUSH)
@@ -95,12 +118,16 @@ def _show_permission_dialog(
                     if b == 0x41 and selected > 0:  # up
                         selected -= 1
                         os.write(stdout_fd, b"\x1b[4A")
-                        _render_options(stdout_fd, selected, tool)
+                        _render_options(
+                            stdout_fd, selected, tool, permission_suggestions
+                        )
                         os.write(stdout_fd, b"\x1b[1B")
                     elif b == 0x42 and selected < 2:  # down
                         selected += 1
                         os.write(stdout_fd, b"\x1b[4A")
-                        _render_options(stdout_fd, selected, tool)
+                        _render_options(
+                            stdout_fd, selected, tool, permission_suggestions
+                        )
                         os.write(stdout_fd, b"\x1b[1B")
                     in_escape = in_csi = False
             else:
