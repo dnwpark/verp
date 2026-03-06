@@ -88,6 +88,8 @@ def _show_permission_dialog(
     tool_input: dict[str, str],
     stdin_fd: int,
     permission_suggestions: list[dict[str, object]],
+    session_id: str = "",
+    directory: str = "",
 ) -> PermissionDecision:
     stdout_fd = sys.stdout.fileno()
 
@@ -108,6 +110,18 @@ def _show_permission_dialog(
     in_escape = False
     in_csi = False
     while True:
+        r, _, _ = select.select([stdin_fd], [], [], 3.0)
+        if not r:
+            if session_id and directory:
+                import time
+
+                set_agent_status(
+                    session_id,
+                    directory,
+                    "waiting_permission",
+                    int(time.time() * 1000),
+                )
+            continue
         ch = os.read(stdin_fd, 1)
         b = ch[0]
         if in_escape:
@@ -177,8 +191,15 @@ def handle_permission_request(conn: socket.socket, stdin_fd: int) -> None:
     tool = req.get("tool", "unknown")
     tool_input = req.get("input", {})
     permission_suggestions = req.get("permission_suggestions", [])
+    session_id = req.get("session_id", "")
+    directory = req.get("directory", "")
     decision = _show_permission_dialog(
-        tool, tool_input, stdin_fd, permission_suggestions
+        tool,
+        tool_input,
+        stdin_fd,
+        permission_suggestions,
+        session_id,
+        directory,
     )
     conn.sendall(json.dumps(asdict(decision)).encode())
     conn.close()
@@ -212,6 +233,8 @@ def cmd_internal_hook_permission_request(
                     "tool": tool,
                     "input": tool_input,
                     "permission_suggestions": permission_suggestions,
+                    "session_id": session_id,
+                    "directory": directory,
                 }
             ).encode()
         )
