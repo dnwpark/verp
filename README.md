@@ -86,7 +86,7 @@ verp agent clear <id>       # Remove a stale agent entry by session ID prefix
 
 Each row shows:
 - **Session ID** — first 8 characters of the Claude session ID
-- **Directory** — the project or worktree the agent is working in
+- **Directory** — the project or worktree the agent is working in; project names are highlighted in purple
 - **Status** — color-coded current state, with active tool name when applicable
 - **Age** — time since last status update
 
