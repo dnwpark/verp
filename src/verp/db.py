@@ -279,6 +279,18 @@ def is_repo_in_project(project_name: str, repo: str) -> bool:
     return row is not None
 
 
+def projects_using_repo(repo: str) -> list[str]:
+    if not DB_PATH.exists():
+        return []
+    conn = _db()
+    rows = conn.execute(
+        "SELECT project_name FROM project_repos WHERE repo = ? ORDER BY project_name",
+        (repo,),
+    ).fetchall()
+    conn.close()
+    return [str(row["project_name"]) for row in rows]
+
+
 def add_repo_to_project(project_name: str, repo: str) -> None:
     conn = _db()
     with conn:

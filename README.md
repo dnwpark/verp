@@ -36,6 +36,7 @@ Repos are stored centrally at `~/.local/share/verp/repos/`. All projects share f
 ```bash
 verp repo clone <git-url>   # Clone a repo into the central store
 verp repo list              # List all available repos
+verp repo unclone <repo>    # Delete a local repo clone (fails if used by any project)
 ```
 
 ### Projects
@@ -105,7 +106,7 @@ Each row shows:
 ### Data storage
 
 All persistent state lives in `~/.local/share/verp/`:
-- `verp.db` — SQLite database with `projects` and `agents` tables (current schema version: 15)
+- `verp.db` — SQLite database with `projects` and `agents` tables
 - `repos/` — bare or standard Git clones used as worktree sources
 - `track.sh` — shell hook handler deployed by migrations, called by Claude on every hook event
 

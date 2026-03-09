@@ -36,6 +36,7 @@ from verp.db import (
     get_all_agents,
     get_project,
     get_project_branch,
+    projects_using_repo,
     init_internal,
     is_project_dir,
     is_repo_in_project,
@@ -375,6 +376,22 @@ def cmd_repo_clone(url: str) -> int:
     return clone(url)
 
 
+def cmd_repo_unclone(repo: str) -> int:
+    rp = REPO_DIR / repo
+    if not rp.is_dir():
+        err(f"repo '{repo}' not found in {REPO_DIR}")
+        return 1
+    using = projects_using_repo(repo)
+    if using:
+        err(f"repo '{repo}' is used by project(s): {', '.join(using)}")
+        return 1
+    import shutil
+
+    shutil.rmtree(rp)
+    print(f"removed {rp}")
+    return 0
+
+
 def cmd_pull() -> int:
     rc = 0
 
@@ -688,6 +705,10 @@ def main() -> None:
     repo_sub.add_parser("list", help="list all repos")
     p_repo_clone = repo_sub.add_parser("clone", help="clone a repo")
     p_repo_clone.add_argument("url", help="git URL to clone")
+    p_repo_unclone = repo_sub.add_parser(
+        "unclone", help="delete a local repo clone"
+    )
+    p_repo_unclone.add_argument("repo", help="repo name to remove")
 
     p_agent = sub.add_parser("agent", help="manage agents")
     agent_sub = p_agent.add_subparsers(dest="agent_command", required=True)
@@ -771,6 +792,8 @@ def main() -> None:
             sys.exit(cmd_repo_list())
         elif args.repo_command == "clone":
             sys.exit(cmd_repo_clone(args.url))
+        elif args.repo_command == "unclone":
+            sys.exit(cmd_repo_unclone(args.repo))
     elif args.command == "agent":
         if args.agent_command == "list":
             sys.exit(cmd_agent_list())
