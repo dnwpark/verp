@@ -447,7 +447,12 @@ def _build_agent_table() -> Table:
         table.add_row("[grey70]no agents[/grey70]", "", "", "")
     for agent in agents:
         sid = agent.session_id[:8]
-        color = "green" if agent.status == "working" else "dark_orange"
+        if agent.status == "working":
+            color = "green"
+        elif agent.status == "waiting_prompt":
+            color = "yellow"
+        else:
+            color = "dark_orange"
         status_str = (
             f"{agent.status} ({agent.tool})" if agent.tool else agent.status
         )
