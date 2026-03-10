@@ -83,6 +83,28 @@ def _render_options(
         os.write(stdout_fd, line.encode())
 
 
+def _claude_dialog_lines(tool: str, tool_input: dict[str, str]) -> int:
+    try:
+        cols = struct.unpack(
+            "hhhh",
+            fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b"\x00" * 8),
+        )[1]
+    except Exception:
+        cols = 80
+    # separator + tool label + action label + blank lines + buffer
+    fixed = 6
+    if tool == "Bash":
+        command = tool_input.get("command", "")
+        first = max(cols - 6, 1)  # " ❯    " prefix
+        cont = max(cols - 3, 1)  # "   " continuation indent
+        if len(command) <= first:
+            wrapped = 1
+        else:
+            wrapped = 1 + (len(command) - first + cont - 1) // cont
+        return fixed + wrapped
+    return fixed + 1
+
+
 def _show_permission_dialog(
     tool: str,
     tool_input: dict[str, str],
@@ -94,7 +116,8 @@ def _show_permission_dialog(
     stdout_fd = sys.stdout.fileno()
 
     question = _format_question(tool, tool_input)
-    os.write(stdout_fd, b"\x1b[6A\r\x1b[J")
+    n = _claude_dialog_lines(tool, tool_input)
+    os.write(stdout_fd, f"\x1b[{n}A\r\x1b[J".encode())
     os.write(stdout_fd, f"\r\n \x1b[1m{question}\x1b[0m\r\n\r\n".encode())
 
     selected = 0
