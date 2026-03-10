@@ -184,7 +184,12 @@ def handle_permission_request(conn: socket.socket, stdin_fd: int) -> None:
             chunks.append(chunk)
         req = json.loads(b"".join(chunks))
     except Exception:
-        conn.sendall(json.dumps(asdict(PermissionDecision("deny"))).encode())
+        try:
+            conn.sendall(
+                json.dumps(asdict(PermissionDecision("deny"))).encode()
+            )
+        except BrokenPipeError:
+            pass
         conn.close()
         return
 
@@ -201,7 +206,10 @@ def handle_permission_request(conn: socket.socket, stdin_fd: int) -> None:
         session_id,
         directory,
     )
-    conn.sendall(json.dumps(asdict(decision)).encode())
+    try:
+        conn.sendall(json.dumps(asdict(decision)).encode())
+    except BrokenPipeError:
+        pass
     conn.close()
 
 
@@ -268,7 +276,7 @@ def cmd_internal_hook_permission_request(
     if decision.interrupt:
         decision_obj["interrupt"] = True
 
-    sys.stdout.write(
+    print(
         json.dumps(
             {
                 "hookSpecificOutput": {
@@ -276,6 +284,7 @@ def cmd_internal_hook_permission_request(
                     "decision": decision_obj,
                 }
             }
-        )
+        ),
+        flush=True,
     )
     return 0
