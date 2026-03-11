@@ -42,6 +42,7 @@ from verp.db import (
     is_repo_in_project,
     project_exists,
     remove_agent,
+    remove_agents_by_pid,
 )
 from verp.git import (
     REPO_DIR,
@@ -604,6 +605,8 @@ def cmd_claude(args: list[str]) -> int:
                     data = os.read(master_fd, 1024)
                 except OSError:
                     break
+                if not data:
+                    break
                 os.write(sys.stdout.fileno(), data)
             if sys.stdin in fds:
                 data = os.read(stdin_fd, 1024)
@@ -621,6 +624,10 @@ def cmd_claude(args: list[str]) -> int:
         try:
             os.unlink(sock_path)
         except OSError:
+            pass
+        try:
+            remove_agents_by_pid(os.getpid())
+        except Exception:
             pass
 
     _, status = os.waitpid(pid, 0)

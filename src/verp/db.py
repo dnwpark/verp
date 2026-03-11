@@ -27,7 +27,7 @@ DATA_DIR = Path.home() / ".local" / "share" / "verp"
 DB_PATH = DATA_DIR / "verp.db"
 _VERSIONS_DIR = Path(__file__).parent / "_versions"
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 
 def _db() -> sqlite3.Connection:
@@ -115,6 +115,10 @@ def _migrate_to_v13(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migrate_to_v16(conn: sqlite3.Connection) -> None:
+    conn.execute("ALTER TABLE agents ADD COLUMN verp_pid INTEGER")
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
@@ -131,6 +135,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     13: _migrate_to_v13,
     14: _migrate_to_v14,
     15: _migrate_to_v15,
+    16: _migrate_to_v16,
 }
 
 
@@ -312,21 +317,41 @@ def is_project_dir(path: Path) -> bool:
     return row is not None
 
 
+def _verp_pid() -> int | None:
+    import os
+
+    sock = os.environ.get("VERP_SOCKET", "")
+    if not sock:
+        return None
+    try:
+        return int(sock.rsplit("-", 1)[-1].removesuffix(".sock"))
+    except ValueError:
+        return None
+
+
 def set_agent_status(
     session_id: str, directory: str, status: str, timestamp: int
 ) -> None:
     """Create agent if needed and set status. Uses timestamp guard."""
+    pid = _verp_pid()
     conn = _db()
     with conn:
         conn.execute(
-            "INSERT INTO agents (session_id, directory, status, tool, updated_at)"
-            " VALUES (?, ?, ?, NULL, ?)"
+            "INSERT INTO agents (session_id, directory, status, tool, updated_at, verp_pid)"
+            " VALUES (?, ?, ?, NULL, ?, ?)"
             " ON CONFLICT(session_id) DO UPDATE SET"
             "     status = excluded.status,"
             "     updated_at = excluded.updated_at"
             " WHERE excluded.updated_at >= agents.updated_at",
-            (session_id, directory, status, timestamp),
+            (session_id, directory, status, timestamp, pid),
         )
+    conn.close()
+
+
+def remove_agents_by_pid(pid: int) -> None:
+    conn = _db()
+    with conn:
+        conn.execute("DELETE FROM agents WHERE verp_pid = ?", (pid,))
     conn.close()
 
 
