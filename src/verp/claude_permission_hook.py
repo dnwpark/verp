@@ -132,7 +132,11 @@ def _show_permission_dialog(
     termios.tcflush(stdin_fd, termios.TCIFLUSH)
 
     def _clear_dialog() -> None:
+        # Clear the 6 verp dialog lines and return cursor to row R (the jump target).
         os.write(stdout_fd, b"\x1b[1A\r\x1b[K" * 6 + b"\x1b[1A")
+        # Restore cursor to C_end where Claude expects it (R + n).
+        if n > 0:
+            os.write(stdout_fd, f"\x1b[{n}B".encode())
         termios.tcflush(stdin_fd, termios.TCIFLUSH)
 
     in_escape = False
