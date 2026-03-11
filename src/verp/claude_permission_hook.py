@@ -91,18 +91,23 @@ def _claude_dialog_lines(tool: str, tool_input: dict[str, str]) -> int:
         )[1]
     except Exception:
         cols = 80
-    # separator + tool label + action label + blank lines + buffer
-    fixed = 6
     if tool == "Bash":
         command = tool_input.get("command", "")
-        first = max(cols - 6, 1)  # " ❯    " prefix
-        cont = max(cols - 3, 1)  # "   " continuation indent
-        if len(command) <= first:
-            wrapped = 1
-        else:
-            wrapped = 1 + (len(command) - first + cont - 1) // cont
-        return fixed + wrapped
-    return fixed + 1
+        # Claude's dialog: "Bash command" header (1) + blank (1)
+        header = 2
+        # Footer: blank + question + 2 options + blank + help = 6 lines.
+        # When the command has newlines, Claude adds a warning (+ blank before
+        # and after it), growing the footer by 2.
+        footer = 8 if "\n" in command else 6
+        # Each physical line in the command is displayed with a 3-space indent
+        # and wraps at (cols - 3) characters.
+        cols_avail = max(cols - 3, 1)
+        cmd_display: int = sum(
+            max(1, (len(line) + cols_avail - 1) // cols_avail)
+            for line in command.split("\n")
+        )
+        return header + cmd_display + footer + 1  # +1 buffer
+    return 7
 
 
 def _show_permission_dialog(
