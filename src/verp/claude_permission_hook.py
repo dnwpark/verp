@@ -166,8 +166,8 @@ def _show_permission_dialog(
 
     def _clear_dialog() -> None:
         # Clear verp dialog lines and return cursor to row R (the jump target).
-        # Layout: blank(1) + question_lines + blank(1) + options_display_lines + esc(1).
-        dialog_lines = 1 + question_lines + 1 + options_display_lines + 1
+        # Layout: question_lines + blank(1) + options_display_lines + esc(1).
+        dialog_lines = question_lines + 1 + options_display_lines + 1
         os.write(stdout_fd, b"\x1b[1A\r\x1b[K" * dialog_lines + b"\x1b[1A")
         # Restore cursor to C_end where Claude expects it (R + n).
         if n > 0:
