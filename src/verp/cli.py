@@ -71,7 +71,12 @@ from verp.project import init_project, setup_new
 from rich.live import Live
 from rich.table import Table
 
-from verp.status import console, print_repo_status, print_untracked_repo_status
+from verp.status import (
+    console,
+    print_repo_status,
+    print_untracked_repo_status,
+    short_repo_status,
+)
 
 BRANCH_PREFIX = "dnwpark"
 
@@ -370,19 +375,11 @@ def cmd_list() -> int:
             print()
         project_dir = Path(project_info.path)
         console.print(f"  [bold]{project_info.name}[/bold]")
-        printed = 0
         for repo in project_info.repos:
-            if printed:
-                print()
-            print_repo_status(
-                repo, project_dir, project_info.branch, indent="    "
-            )
-            printed += 1
+            status = short_repo_status(repo, project_dir, project_info.branch)
+            console.print(f"    {repo} {status}")
         for path in extra_git_dirs(project_dir, project_info.repos):
-            if printed:
-                print()
-            print_untracked_repo_status(path, indent="    ")
-            printed += 1
+            console.print(f"    {path.name} [grey70](untracked)[/grey70]")
 
     return 0
 

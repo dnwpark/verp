@@ -93,6 +93,57 @@ def print_untracked_repo_status(path: Path, indent: str = "  ") -> None:
     _print_status_lines(local_lines, remote_lines, indent)
 
 
+def short_repo_status(repo: str, project_dir: Path, branch: str) -> str:
+    """Return a compact one-line rich-markup status string for a repo."""
+    wt = project_dir / repo
+    rp = REPO_DIR / repo
+
+    if not wt.is_dir():
+        return "[red](worktree missing)[/red]"
+
+    primary = primary_branch(rp)
+    if not primary:
+        return "[red](primary branch unknown)[/red]"
+
+    parts: list[str] = []
+
+    branch_sync = ahead_behind(f"origin/{primary}", "HEAD", wt)
+    if branch_sync is not None:
+        ahead, behind = branch_sync
+        if ahead:
+            parts.append(f"[grey70]{ahead} ahead[/grey70]")
+        if behind:
+            parts.append(f"[grey70]{behind} behind[/grey70]")
+
+    changed, untracked = worktree_changes(wt)
+    if changed:
+        parts.append(f"[dark_orange]{changed} modified[/dark_orange]")
+    if untracked:
+        parts.append(f"[dark_orange]{untracked} untracked[/dark_orange]")
+
+    primary_sync = ahead_behind(f"origin/{primary}", primary, rp)
+    if primary_sync is not None:
+        p_ahead, p_behind = primary_sync
+        if p_ahead and p_behind:
+            parts.append("[red]primary out of sync[/red]")
+        elif p_behind:
+            parts.append("[grey70]needs pull[/grey70]")
+
+    origin_sync = ahead_behind(f"origin/{branch}", "HEAD", wt)
+    if origin_sync is None:
+        parts.append("[grey70]not pushed[/grey70]")
+    else:
+        o_ahead, o_behind = origin_sync
+        if o_ahead and o_behind:
+            parts.append("[red]branch out of sync[/red]")
+        elif o_ahead:
+            parts.append("[grey70]needs push[/grey70]")
+
+    if not parts:
+        return "[green]up to date[/green]"
+    return "(" + ", ".join(parts) + ")"
+
+
 def print_repo_status(
     repo: str, project_dir: Path, branch: str, indent: str = "  "
 ) -> None:
