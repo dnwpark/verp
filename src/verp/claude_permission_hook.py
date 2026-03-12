@@ -32,13 +32,23 @@ def _format_question(tool: str, tool_input: dict[str, str]) -> str:
         return f"Do you want to edit {name}?"
     elif tool == "Bash":
         cmd = tool_input.get("command", "")
-        cols = struct.unpack(
-            "hhhh",
-            fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b"\x00" * 8),
-        )[1]
-        if len(cmd) > cols - 8:
-            cmd = cmd[: cols - 11] + "..."
-        return f"Run: {cmd}"
+        try:
+            cols = struct.unpack(
+                "hhhh",
+                fcntl.ioctl(
+                    sys.stdout.fileno(), termios.TIOCGWINSZ, b"\x00" * 8
+                ),
+            )[1]
+        except Exception:
+            cols = 80
+        max_len = cols - 8
+        wrapped = []
+        for line in cmd.split("\n"):
+            while len(line) > max_len:
+                wrapped.append(line[:max_len])
+                line = line[max_len:]
+            wrapped.append(line)
+        return "Run: " + "\n".join(wrapped)
     elif tool == "Read":
         name = Path(tool_input.get("file_path", "file")).name
         return f"Do you want to read {name}?"
@@ -64,17 +74,21 @@ def _session_allow_label(
     return f"Yes, allow {tool} this session"
 
 
-def _render_options(
-    stdout_fd: int,
-    selected: int,
-    tool: str,
-    permission_suggestions: list[dict[str, object]],
-) -> None:
-    options = [
+def _build_options(
+    tool: str, permission_suggestions: list[dict[str, object]]
+) -> list[str]:
+    return [
         "Yes",
         _session_allow_label(tool, permission_suggestions),
         "No",
     ]
+
+
+def _render_options(
+    stdout_fd: int,
+    selected: int,
+    options: list[str],
+) -> None:
     for i, label in enumerate(options):
         if i == selected:
             line = f"\r \x1b[34m❯ {i + 1}. {label}\x1b[0m\x1b[K\r\n"
@@ -120,20 +134,41 @@ def _show_permission_dialog(
 ) -> PermissionDecision:
     stdout_fd = sys.stdout.fileno()
 
+    try:
+        cols = struct.unpack(
+            "hhhh",
+            fcntl.ioctl(stdout_fd, termios.TIOCGWINSZ, b"\x00" * 8),
+        )[1]
+    except Exception:
+        cols = 80
+
     question = _format_question(tool, tool_input)
+    question_lines = question.count("\n") + 1
+    question_terminal = question.replace("\n", "\r\n")
+    options = _build_options(tool, permission_suggestions)
+    # prefix is " ❯ N. " or "   N. " = 5 chars; label wraps at cols - 5
+    option_cols = max(cols - 5, 1)
+    options_display_lines = sum(
+        max(1, (len(label) + option_cols - 1) // option_cols)
+        for label in options
+    )
     n = _claude_dialog_lines(tool, tool_input)
     os.write(stdout_fd, f"\x1b[{n}A\r\x1b[J".encode())
-    os.write(stdout_fd, f"\r\n \x1b[1m{question}\x1b[0m\r\n\r\n".encode())
+    os.write(
+        stdout_fd, f"\r\n \x1b[1m{question_terminal}\x1b[0m\r\n\r\n".encode()
+    )
 
     selected = 0
-    _render_options(stdout_fd, selected, tool, permission_suggestions)
+    _render_options(stdout_fd, selected, options)
     os.write(stdout_fd, " \x1b[2mEsc to cancel\x1b[0m\r\n".encode())
 
     termios.tcflush(stdin_fd, termios.TCIFLUSH)
 
     def _clear_dialog() -> None:
-        # Clear the 6 verp dialog lines and return cursor to row R (the jump target).
-        os.write(stdout_fd, b"\x1b[1A\r\x1b[K" * 6 + b"\x1b[1A")
+        # Clear verp dialog lines and return cursor to row R (the jump target).
+        # Layout: blank(1) + question_lines + blank(1) + options_display_lines + esc(1).
+        dialog_lines = 1 + question_lines + 1 + options_display_lines + 1
+        os.write(stdout_fd, b"\x1b[1A\r\x1b[K" * dialog_lines + b"\x1b[1A")
         # Restore cursor to C_end where Claude expects it (R + n).
         if n > 0:
             os.write(stdout_fd, f"\x1b[{n}B".encode())
@@ -163,17 +198,19 @@ def _show_permission_dialog(
                 if 0x40 <= b <= 0x7E:  # final byte
                     if b == 0x41 and selected > 0:  # up
                         selected -= 1
-                        os.write(stdout_fd, b"\x1b[4A")
-                        _render_options(
-                            stdout_fd, selected, tool, permission_suggestions
+                        os.write(
+                            stdout_fd,
+                            f"\x1b[{options_display_lines + 1}A".encode(),
                         )
+                        _render_options(stdout_fd, selected, options)
                         os.write(stdout_fd, b"\x1b[1B")
-                    elif b == 0x42 and selected < 2:  # down
+                    elif b == 0x42 and selected < len(options) - 1:  # down
                         selected += 1
-                        os.write(stdout_fd, b"\x1b[4A")
-                        _render_options(
-                            stdout_fd, selected, tool, permission_suggestions
+                        os.write(
+                            stdout_fd,
+                            f"\x1b[{options_display_lines + 1}A".encode(),
                         )
+                        _render_options(stdout_fd, selected, options)
                         os.write(stdout_fd, b"\x1b[1B")
                     in_escape = in_csi = False
             else:
