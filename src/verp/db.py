@@ -306,6 +306,16 @@ def add_repo_to_project(project_name: str, repo: str) -> None:
     conn.close()
 
 
+def remove_repo_from_project(project_name: str, repo: str) -> None:
+    conn = _db()
+    with conn:
+        conn.execute(
+            "DELETE FROM project_repos WHERE project_name = ? AND repo = ?",
+            (project_name, repo),
+        )
+    conn.close()
+
+
 def is_project_dir(path: Path) -> bool:
     if not DB_PATH.exists():
         return False

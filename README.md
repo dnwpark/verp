@@ -54,6 +54,7 @@ verp pull                   # Pull all repos and fetch latest worktrees
 ```bash
 verp status                 # Git status across all worktrees in the project
 verp add <repo>             # Add another repo to the project; if a remote branch exists, check it out
+verp remove <repo>          # Remove a repo from the project, deleting its worktree and branch
 verp delete                 # Delete the project and all its worktrees
 ```
 
@@ -123,7 +124,7 @@ All persistent state lives in `~/.local/share/verp/`:
 | File | Purpose |
 |---|---|
 | `src/verp/cli.py` | All CLI commands and argument parsing |
-| `src/verp/db.py` | SQLite layer, schema migrations (versions 1–15) |
+| `src/verp/db.py` | SQLite layer and schema migrations |
 | `src/verp/git.py` | Thin wrappers around git subprocess calls |
 | `src/verp/claude_permission_hook.py` | Permission dialog rendering and socket communication |
 | `src/verp/status.py` | Rich-formatted git status display |
@@ -132,7 +133,7 @@ All persistent state lives in `~/.local/share/verp/`:
 
 ### Schema migrations
 
-`db.py` runs migrations automatically on startup. Each version in `_versions/` may update `track.sh` and/or `claude_settings.json` deployed to the data directory. The `latest/` symlink points to the current versions.
+`db.py` runs migrations automatically on startup. Each version in `_versions/` may update `track.sh` and/or `claude_settings.json` deployed to the data directory.
 
 ### Development workflow
 

@@ -43,6 +43,7 @@ from verp.db import (
     project_exists,
     remove_agent,
     remove_agents_by_pid,
+    remove_repo_from_project,
 )
 from verp.git import (
     REPO_DIR,
@@ -188,6 +189,47 @@ def cmd_add(repo: str) -> int:
 
     print(f"{repo}: worktree at {worktree_dir} (branch {project_info.branch})")
     add_repo_to_project(name, repo)
+    return 0
+
+
+def cmd_remove(repo: str) -> int:
+    project_info = get_current_project()
+    if project_info is None:
+        err("not inside a verp project")
+        return 1
+
+    name = project_info.name
+    project_dir = Path(project_info.path)
+    branch = project_info.branch
+
+    if not is_repo_in_project(name, repo):
+        err(f"'{repo}' is not associated with project '{name}'")
+        return 1
+
+    print_repo_status(repo, project_dir, branch)
+
+    answer = input("\nremove? [y/N] ").strip().lower()
+    if answer != "y":
+        print("aborted")
+        return 1
+
+    wt = project_dir / repo
+    rp = REPO_DIR / repo
+
+    if wt.is_dir():
+        result = worktree_remove(rp, wt)
+        if result.returncode != 0:
+            err(f"failed to remove worktree: {result.stderr.strip()}")
+            return 1
+
+    if branch_exists(rp, branch):
+        result = branch_delete(rp, branch)
+        if result.returncode != 0:
+            err(f"failed to delete branch {branch}: {result.stderr.strip()}")
+            return 1
+
+    remove_repo_from_project(name, repo)
+    print(f"removed '{repo}' from project '{name}'")
     return 0
 
 
@@ -658,6 +700,7 @@ def main() -> None:
         project:
           status                   show git status of each worktree
           add <repo>               add a repo to the current project
+          remove <repo>            remove a repo from the current project
           delete                   delete the current project and its worktrees
 
         worktree:
@@ -706,6 +749,11 @@ def main() -> None:
 
     p_add = sub.add_parser("add", help="add a repo to the current project")
     p_add.add_argument("repo", help="repo to add").completer = repo_completer  # type: ignore[attr-defined]
+
+    p_remove = sub.add_parser(
+        "remove", help="remove a repo from the current project"
+    )
+    p_remove.add_argument("repo", help="repo to remove")
 
     p_repo = sub.add_parser("repo", help="manage repos")
     repo_sub = p_repo.add_subparsers(dest="repo_command", required=True)
@@ -786,6 +834,8 @@ def main() -> None:
         sys.exit(cmd_pull())
     elif args.command == "add":
         sys.exit(cmd_add(args.repo))
+    elif args.command == "remove":
+        sys.exit(cmd_remove(args.repo))
     elif args.command == "status":
         sys.exit(cmd_status())
     elif args.command == "delete":
