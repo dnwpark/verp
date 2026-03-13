@@ -11,6 +11,7 @@ import socket
 import subprocess
 import sys
 import termios
+import time
 import tty
 import textwrap
 from dataclasses import dataclass
@@ -44,6 +45,7 @@ from verp.db import (
     remove_agent,
     remove_agents_by_pid,
     remove_repo_from_project,
+    set_agents_status_by_pid,
 )
 from verp.git import (
     REPO_DIR,
@@ -649,6 +651,10 @@ def cmd_claude(args: list[str]) -> int:
                 os.write(sys.stdout.fileno(), data)
             if sys.stdin in fds:
                 data = os.read(stdin_fd, 1024)
+                if b"\x03" in data:
+                    set_agents_status_by_pid(
+                        os.getpid(), "waiting_prompt", int(time.time() * 1000)
+                    )
                 try:
                     os.write(master_fd, data)
                 except OSError:

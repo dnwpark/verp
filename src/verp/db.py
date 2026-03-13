@@ -373,6 +373,15 @@ def remove_agents_by_pid(pid: int) -> None:
     conn.close()
 
 
+def set_agents_status_by_pid(pid: int, status: str, timestamp: int) -> None:
+    conn = _db()
+    with conn:
+        conn.execute(
+            "UPDATE agents SET status = ?, updated_at = ? WHERE verp_pid = ?",
+            (status, timestamp, pid),
+        )
+    conn.close()
+
 
 def set_agent_tool(session_id: str, tool: str) -> None:
     """Set tool on an existing agent."""
