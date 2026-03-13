@@ -9,7 +9,7 @@ import termios
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from verp.db import set_agent_status, set_agent_tool
+from verp.db import reset_agent_tool, set_agent_status, set_agent_tool
 
 
 @dataclass
@@ -246,7 +246,9 @@ def _show_permission_dialog(
     return PermissionDecision("allow")
 
 
-def handle_permission_request(conn: socket.socket, stdin_fd: int) -> None:
+def handle_permission_request(
+    conn: socket.socket, stdin_fd: int, master_fd: int
+) -> None:
     try:
         chunks = []
         while chunk := conn.recv(4096):
@@ -275,6 +277,14 @@ def handle_permission_request(conn: socket.socket, stdin_fd: int) -> None:
         session_id,
         directory,
     )
+    if decision.interrupt:
+        import time
+
+        set_agent_status(
+            session_id, directory, "waiting_prompt", int(time.time() * 1000)
+        )
+        reset_agent_tool(session_id)
+        os.write(master_fd, b"\x03")
     try:
         conn.sendall(json.dumps(asdict(decision)).encode())
     except BrokenPipeError:

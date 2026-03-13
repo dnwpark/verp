@@ -662,7 +662,7 @@ def cmd_claude(args: list[str]) -> int:
                     break
             if listen_sock in fds:
                 conn, _ = listen_sock.accept()
-                handle_permission_request(conn, stdin_fd)
+                handle_permission_request(conn, stdin_fd, master_fd)
     finally:
         termios.tcsetattr(stdin_fd, termios.TCSAFLUSH, old)
         os.close(master_fd)
