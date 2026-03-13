@@ -41,3 +41,4 @@ Schema migrations run automatically on startup in `init_internal()`. Each migrat
 - `working` — actively using a tool
 - `waiting_prompt` — waiting for user input
 - `waiting_permission` — waiting for a permission decision
+- `asking_question` — Claude is asking the user a question via AskUserQuestion

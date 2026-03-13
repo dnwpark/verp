@@ -285,6 +285,10 @@ def handle_permission_request(conn: socket.socket, stdin_fd: int) -> None:
 def cmd_internal_hook_permission_request(
     session_id: str, directory: str, tool: str, timestamp: int
 ) -> int:
+    if tool == "AskUserQuestion":
+        set_agent_status(session_id, directory, "asking_question", timestamp)
+        return 0
+
     if directory:
         set_agent_status(session_id, directory, "waiting_permission", timestamp)
         set_agent_tool(session_id, tool)

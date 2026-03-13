@@ -509,6 +509,8 @@ def _build_agent_table() -> Table:
             color = "green"
         elif agent.status == "waiting_prompt":
             color = "yellow"
+        elif agent.status == "asking_question":
+            color = "dark_orange"
         else:
             color = "dark_orange"
         status_str = (
