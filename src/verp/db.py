@@ -27,7 +27,7 @@ DATA_DIR = Path.home() / ".local" / "share" / "verp"
 DB_PATH = DATA_DIR / "verp.db"
 _VERSIONS_DIR = Path(__file__).parent / "_versions"
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 
 def _db() -> sqlite3.Connection:
@@ -119,6 +119,13 @@ def _migrate_to_v16(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE agents ADD COLUMN verp_pid INTEGER")
 
 
+def _migrate_to_v17(conn: sqlite3.Connection) -> None:
+    shutil.copy2(
+        _VERSIONS_DIR / "17" / "claude_settings.json",
+        DATA_DIR / "claude-settings.json",
+    )
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
@@ -136,6 +143,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     14: _migrate_to_v14,
     15: _migrate_to_v15,
     16: _migrate_to_v16,
+    17: _migrate_to_v17,
 }
 
 
@@ -363,6 +371,7 @@ def remove_agents_by_pid(pid: int) -> None:
     with conn:
         conn.execute("DELETE FROM agents WHERE verp_pid = ?", (pid,))
     conn.close()
+
 
 
 def set_agent_tool(session_id: str, tool: str) -> None:
