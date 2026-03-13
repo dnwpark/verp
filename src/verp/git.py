@@ -12,6 +12,11 @@ def run(
     )
 
 
+def branch_prefix() -> str:
+    result = run(["git", "config", "verp.prefix"], check=False)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
 def is_git_repo(path: Path) -> bool:
     return (
         run(["git", "rev-parse", "--git-dir"], cwd=path, check=False).returncode

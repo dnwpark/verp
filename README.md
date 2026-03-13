@@ -41,7 +41,11 @@ verp repo unclone <repo>    # Delete a local repo clone (fails if used by any pr
 
 ### Projects
 
-Projects are directories, typically created in your working directory. Each project checks out a worktree for each of its repos, all on a branch named after the project.
+Projects are directories, typically created in your working directory. Each project checks out a worktree for each of its repos, all on a branch named after the project. Branch names are optionally prefixed with a configured value (e.g. `yourname/`), set via:
+
+```bash
+git config --global verp.prefix "yourname/"
+```
 
 ```bash
 verp new <name> [repos...]  # Create a new project (optionally add repos immediately)

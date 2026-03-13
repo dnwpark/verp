@@ -52,6 +52,7 @@ from verp.git import (
     ahead_behind,
     branch_delete,
     branch_exists,
+    branch_prefix,
     clone,
     current_branch,
     extra_git_dirs,
@@ -79,8 +80,6 @@ from verp.status import (
     print_untracked_repo_status,
     short_repo_status,
 )
-
-BRANCH_PREFIX = "dnwpark"
 
 
 @dataclass
@@ -118,7 +117,7 @@ def cmd_new(name: str, repos: list[str]) -> int:
         err(f"invalid project name '{name}': must not contain '/'")
         return 1
 
-    branch = f"{BRANCH_PREFIX}/{name}"
+    branch = f"{branch_prefix()}{name}"
     project_dir = Path.cwd() / name
 
     if project_dir.exists():
