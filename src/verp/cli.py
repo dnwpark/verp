@@ -72,7 +72,6 @@ from verp.git import (
 )
 from verp.agent import format_age
 from verp.project import init_project, setup_new
-from rich.live import Live
 from rich.table import Table
 
 from verp.status import (
@@ -527,19 +526,9 @@ def _build_agent_table() -> Table:
 
 
 def cmd_agent_monitor() -> int:
-    import time
+    from verp.monitor import AgentMonitor
 
-    try:
-        with Live(
-            _build_agent_table(),
-            console=console,
-            refresh_per_second=2,
-        ) as live:
-            while True:
-                time.sleep(0.5)
-                live.update(_build_agent_table())
-    except KeyboardInterrupt:
-        pass
+    AgentMonitor().run()
     return 0
 
 

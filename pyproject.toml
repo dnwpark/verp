@@ -3,7 +3,7 @@ name = "verp"
 version = "0.1.0"
 description = "Project worktree manager"
 requires-python = ">=3.11"
-dependencies = ["argcomplete", "rich"]
+dependencies = ["argcomplete", "rich", "prompt_toolkit"]
 
 [project.scripts]
 verp = "verp.cli:main"

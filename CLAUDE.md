@@ -13,6 +13,7 @@ When adding a new agent status value, update the status table in both `CLAUDE.md
 ## Project structure
 
 - `src/verp/cli.py` — all CLI commands and argument parsing
+- `src/verp/monitor.py` — interactive agent monitor TUI (prompt_toolkit)
 - `src/verp/db.py` — SQLite layer and schema migrations
 - `src/verp/git.py` — git subprocess wrappers
 - `src/verp/claude_permission_hook.py` — permission dialog and socket communication
