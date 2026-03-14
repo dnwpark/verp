@@ -83,6 +83,7 @@ Once agents are running, you can monitor them:
 verp agent list             # Snapshot list of all active agents
 verp agent monitor          # Live-updating agent monitor (refreshes every 0.5s)
 verp agent clear <id>       # Remove a stale agent entry by session ID prefix
+verp agent focus <id>       # Focus the terminal window running an agent
 ```
 
 #### Agent Monitor
@@ -135,6 +136,7 @@ All persistent state lives in `~/.local/share/verp/`:
 | `src/verp/status.py` | Rich-formatted git status display |
 | `src/verp/project.py` | Project migration logic for config updates |
 | `src/verp/_versions/` | Versioned `track.sh` and `claude_settings.json` for each schema version |
+| `src/verp/focus/` | Terminal window focus module (extensible, platform/terminal dispatch) |
 
 ### Schema migrations
 

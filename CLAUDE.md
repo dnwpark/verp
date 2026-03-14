@@ -19,6 +19,15 @@ When adding a new agent status value, update the status table in both `CLAUDE.md
 - `src/verp/status.py` — rich-formatted git status display
 - `src/verp/project.py` — project migration logic
 - `src/verp/_versions/` — versioned `track.sh` and `claude_settings.json` per schema version
+- `src/verp/focus/` — terminal window focus module
+  - `__init__.py` — public API: `focus_by_tty(tty)`, `pid_to_tty(pid)`
+  - `_base.py` — `TerminalFocuser` protocol
+  - `_proc.py` — shared constants (`TERMINAL_EMULATORS`), `pid_to_tty`, and focuser dispatch
+  - `_focusers/_macos.py` — macOS focuser via pyobjc/osascript
+  - `_focusers/_linux_x11.py` — Linux X11 focuser via ewmh/xdotool
+  - `_focusers/_wezterm.py` — WezTerm CLI focuser
+  - `_focusers/_kitty.py` — kitty remote control focuser
+  - `_focusers/_tmux.py` — tmux pane focuser
 
 ## Data
 

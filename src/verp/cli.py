@@ -34,6 +34,7 @@ from verp.db import (
     set_agent_status,
     set_agent_tool,
     delete_project,
+    get_agent_by_prefix,
     get_all_agents,
     get_project,
     get_project_branch,
@@ -551,6 +552,26 @@ def cmd_agent_clear(session_id: str) -> int:
     return 0
 
 
+def cmd_agent_focus(session_id: str) -> int:
+    from verp.focus import focus_by_tty, pid_to_tty
+
+    agent = get_agent_by_prefix(session_id)
+    if agent is None:
+        err(f"no agent matching '{session_id}'")
+        return 1
+    if agent.verp_pid is None:
+        err("agent has no verp PID recorded")
+        return 1
+    tty = pid_to_tty(agent.verp_pid)
+    if tty is None:
+        err("could not determine TTY for agent")
+        return 1
+    if not focus_by_tty(tty):
+        err("could not focus terminal")
+        return 1
+    return 0
+
+
 def cmd_internal_hook_session_start(session_id: str, timestamp: int) -> int:
     return 0
 
@@ -775,6 +796,10 @@ def main() -> None:
     agent_sub.add_parser("monitor", help="live-updating agent monitor")
     p_agent_clear = agent_sub.add_parser("clear", help="clear an agent entry")
     p_agent_clear.add_argument("id", help="session ID prefix")
+    p_agent_focus = agent_sub.add_parser(
+        "focus", help="focus terminal window of an agent"
+    )
+    p_agent_focus.add_argument("id", help="session ID prefix")
 
     p_verp_claude = sub.add_parser(
         "claude", help="launch claude with verp hooks"
@@ -862,6 +887,8 @@ def main() -> None:
             sys.exit(cmd_agent_monitor())
         elif args.agent_command == "clear":
             sys.exit(cmd_agent_clear(args.id))
+        elif args.agent_command == "focus":
+            sys.exit(cmd_agent_focus(args.id))
     elif args.command == "_claude":
         if args.claude_command == "hook_session_start":
             sys.exit(

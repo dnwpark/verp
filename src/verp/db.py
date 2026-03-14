@@ -21,6 +21,7 @@ class AgentInfo:
     status: str
     tool: str | None
     updated_at: int
+    verp_pid: int | None = None
 
 
 DATA_DIR = Path.home() / ".local" / "share" / "verp"
@@ -432,7 +433,7 @@ def get_all_agents() -> list[AgentInfo]:
         return []
     conn = _db()
     rows = conn.execute(
-        "SELECT session_id, directory, status, tool, updated_at"
+        "SELECT session_id, directory, status, tool, updated_at, verp_pid"
         " FROM agents ORDER BY updated_at DESC"
     ).fetchall()
     conn.close()
@@ -443,6 +444,31 @@ def get_all_agents() -> list[AgentInfo]:
             status=str(row["status"]),
             tool=str(row["tool"]) if row["tool"] is not None else None,
             updated_at=int(row["updated_at"]),
+            verp_pid=(
+                int(row["verp_pid"]) if row["verp_pid"] is not None else None
+            ),
         )
         for row in rows
     ]
+
+
+def get_agent_by_prefix(prefix: str) -> AgentInfo | None:
+    if not DB_PATH.exists():
+        return None
+    conn = _db()
+    row = conn.execute(
+        "SELECT session_id, directory, status, tool, updated_at, verp_pid"
+        " FROM agents WHERE session_id LIKE ?",
+        (prefix + "%",),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return AgentInfo(
+        session_id=str(row["session_id"]),
+        directory=str(row["directory"]),
+        status=str(row["status"]),
+        tool=str(row["tool"]) if row["tool"] is not None else None,
+        updated_at=int(row["updated_at"]),
+        verp_pid=int(row["verp_pid"]) if row["verp_pid"] is not None else None,
+    )
