@@ -666,6 +666,13 @@ def cmd_claude(args: list[str]) -> int:
                     set_agents_status_by_pid(
                         os.getpid(), "waiting_prompt", int(time.time() * 1000)
                     )
+                if b"\x1c" in data:
+                    from verp.monitor import focus_existing_monitor
+
+                    focus_existing_monitor()
+                    data = data.replace(b"\x1c", b"")
+                if not data:
+                    continue
                 try:
                     os.write(master_fd, data)
                 except OSError:

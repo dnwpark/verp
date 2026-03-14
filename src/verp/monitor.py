@@ -1,4 +1,5 @@
 import asyncio
+import os
 from pathlib import Path
 
 from prompt_toolkit import Application
@@ -9,7 +10,35 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 
 from verp.agent import format_age
-from verp.db import AgentInfo, get_all_agents, is_project_dir
+from verp.db import AgentInfo, DATA_DIR, get_all_agents, is_project_dir
+from verp.focus import focus_by_tty, pid_to_tty
+
+_LOCK_FILE = DATA_DIR / "monitor.pid"
+
+
+def _write_lock() -> None:
+    tty = pid_to_tty(os.getpid())
+    if tty:
+        _LOCK_FILE.write_text(f"{os.getpid()}:{tty}")
+
+
+def _clear_lock() -> None:
+    _LOCK_FILE.unlink(missing_ok=True)
+
+
+def focus_existing_monitor() -> bool:
+    """Focus a running monitor if one exists. Returns True if focused."""
+    if not _LOCK_FILE.exists():
+        return False
+    try:
+        pid_str, tty = _LOCK_FILE.read_text().split(":", 1)
+        pid = int(pid_str)
+        os.kill(pid, 0)  # check liveness
+        return focus_by_tty(tty)
+    except (ValueError, OSError):
+        _clear_lock()
+        return False
+
 
 _STATUS_ORDER = {
     "waiting_permission": 0,
@@ -176,15 +205,22 @@ class AgentMonitor:
             await asyncio.sleep(0.5)
 
     def run(self) -> None:
-        async def main() -> None:
-            task = asyncio.create_task(self._refresh_loop())
-            try:
-                await self._app.run_async()
-            finally:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
+        if focus_existing_monitor():
+            return
+        _write_lock()
+        try:
 
-        asyncio.run(main())
+            async def main() -> None:
+                task = asyncio.create_task(self._refresh_loop())
+                try:
+                    await self._app.run_async()
+                finally:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+
+            asyncio.run(main())
+        finally:
+            _clear_lock()

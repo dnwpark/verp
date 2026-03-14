@@ -81,7 +81,7 @@ Once agents are running, you can monitor them:
 
 ```bash
 verp agent list             # Snapshot list of all active agents
-verp agent monitor          # Live-updating agent monitor (refreshes every 0.5s)
+verp agent monitor          # Interactive agent monitor
 verp agent clear <id>       # Remove a stale agent entry by session ID prefix
 verp agent focus <id>       # Focus the terminal window running an agent
 ```
@@ -90,11 +90,21 @@ verp agent focus <id>       # Focus the terminal window running an agent
 
 ![Agent monitor screenshot](images/agent-monitor.png)
 
+An interactive full-screen TUI.
+
 Each row shows:
 - **Session ID** — first 8 characters of the Claude session ID
 - **Directory** — the project or worktree the agent is working in; project names are highlighted in purple
 - **Status** — color-coded current state, with active tool name when applicable
 - **Age** — time since last status update
+
+**Keybindings:**
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Navigate rows |
+| `Enter` | Focus the selected agent's terminal window |
+| `Esc` | Deselect |
+| `q` / `Ctrl+C` | Quit |
 
 **Status colors:**
 | Status | Color | Meaning |
@@ -103,6 +113,11 @@ Each row shows:
 | `waiting_prompt` | yellow | Agent is waiting for user input |
 | `waiting_permission` | orange | Agent is waiting for a permission decision |
 | `asking_question` | orange | Agent is asking the user a question |
+
+**Jump to monitor from a Claude session:**
+Press `Ctrl+\` in any `verp claude` session to focus a running monitor window.
+
+Note: Only one instance runs at a time — launching a second `verp agent monitor` focuses the existing one instead of opening a new window.
 
 ---
 
