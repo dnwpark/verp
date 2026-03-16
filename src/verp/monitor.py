@@ -40,13 +40,6 @@ def focus_existing_monitor() -> bool:
         return False
 
 
-_STATUS_ORDER = {
-    "waiting_permission": 0,
-    "asking_question": 0,
-    "waiting_prompt": 1,
-    "working": 2,
-}
-
 _STATUS_STYLE = {
     "working": "fg:ansigreen",
     "waiting_prompt": "fg:ansiyellow",
@@ -79,10 +72,7 @@ class AgentMonitor:
         self._app: Application[None] = self._build_app()
 
     def _sorted_agents(self, agents: list[AgentInfo]) -> list[AgentInfo]:
-        return sorted(
-            agents,
-            key=lambda a: (_STATUS_ORDER.get(a.status, 99), -a.updated_at),
-        )
+        return sorted(agents, key=lambda a: a.directory)
 
     def _render_table(self) -> StyleAndTextTuples:
         result: StyleAndTextTuples = []
