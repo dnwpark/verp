@@ -10,7 +10,13 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 
 from verp.agent import format_age
-from verp.db import AgentInfo, DATA_DIR, get_all_agents, is_project_dir
+from verp.db import (
+    AgentInfo,
+    DATA_DIR,
+    get_all_agents,
+    is_project_dir,
+    set_agent_status_by_session,
+)
 from verp.focus import focus_by_tty, pid_to_tty
 
 _LOCK_FILE = DATA_DIR / "monitor.pid"
@@ -45,6 +51,7 @@ _STATUS_STYLE = {
     "waiting_prompt": "fg:ansiyellow",
     "asking_question": "fg:#ff8700",
     "waiting_permission": "fg:#ff8700",
+    "paused": "fg:grey",
 }
 
 
@@ -114,7 +121,12 @@ class AgentMonitor:
         return result
 
     def _render_status_bar(self) -> StyleAndTextTuples:
-        return [("class:status-bar", "  ↑↓ navigate   Enter focus   q quit")]
+        return [
+            (
+                "class:status-bar",
+                "  ↑↓ navigate   Enter focus   p pause/unpause   q quit",
+            )
+        ]
 
     def _build_app(self) -> "Application[None]":
         kb = KeyBindings()
@@ -145,6 +157,10 @@ class AgentMonitor:
         def _enter(event: KeyPressEvent) -> None:
             self._focus_selected()
 
+        @kb.add("p")
+        def _pause(event: KeyPressEvent) -> None:
+            self._toggle_paused()
+
         @kb.add("q")
         @kb.add("c-c")
         def _quit(event: KeyPressEvent) -> None:
@@ -172,6 +188,13 @@ class AgentMonitor:
             style=Style.from_dict({"status-bar": "reverse"}),
             full_screen=True,
         )
+
+    def _toggle_paused(self) -> None:
+        if self._selected is None or self._selected >= len(self._agents):
+            return
+        agent = self._agents[self._selected]
+        new_status = "waiting_prompt" if agent.status == "paused" else "paused"
+        set_agent_status_by_session(agent.session_id, new_status)
 
     def _focus_selected(self) -> None:
         from verp.focus import focus_by_tty, pid_to_tty

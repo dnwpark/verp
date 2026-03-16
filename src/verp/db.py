@@ -367,6 +367,17 @@ def set_agent_status(
     conn.close()
 
 
+def set_agent_status_by_session(session_id: str, status: str) -> None:
+    """Directly set an agent's status by session ID (for manual status changes)."""
+    conn = _db()
+    with conn:
+        conn.execute(
+            "UPDATE agents SET status = ? WHERE session_id = ?",
+            (status, session_id),
+        )
+    conn.close()
+
+
 def remove_agents_by_pid(pid: int) -> None:
     conn = _db()
     with conn:

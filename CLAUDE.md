@@ -52,3 +52,4 @@ Schema migrations run automatically on startup in `init_internal()`. Each migrat
 - `waiting_prompt` — waiting for user input
 - `waiting_permission` — waiting for a permission decision
 - `asking_question` — Claude is asking the user a question via AskUserQuestion
+- `paused` — manually set via the monitor (`p`) to de-emphasize idle agents
