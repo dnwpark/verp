@@ -223,6 +223,11 @@ def _show_permission_dialog(
                 return PermissionDecision("deny", interrupt=True)
             in_escape = True
             continue
+        if ch == b"\x1c":
+            from verp.monitor import focus_existing_monitor
+
+            focus_existing_monitor()
+            continue
         if ch in (b"y", b"Y"):
             selected = 0
             break
