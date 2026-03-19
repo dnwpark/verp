@@ -22,8 +22,8 @@ from verp.claude_permission_hook import (
 )
 from pathlib import Path
 
+from verp.paths import DATA_DIR
 from verp.db import (
-    DATA_DIR,
     SCHEMA_VERSION,
     ProjectInfo,
     add_project,

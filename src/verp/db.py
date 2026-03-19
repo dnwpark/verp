@@ -4,6 +4,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from verp.paths import DATA_DIR
+
 
 @dataclass
 class ProjectInfo:
@@ -24,7 +26,6 @@ class AgentInfo:
     verp_pid: int | None = None
 
 
-DATA_DIR = Path.home() / ".local" / "share" / "verp"
 DB_PATH = DATA_DIR / "verp.db"
 _VERSIONS_DIR = Path(__file__).parent / "_versions"
 

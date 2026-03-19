@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 
-from verp.db import DATA_DIR
+from verp.paths import DATA_DIR
 
 REPO_DIR = DATA_DIR / "repos"
 

@@ -10,9 +10,9 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 
 from verp.agent import format_age
+from verp.paths import DATA_DIR
 from verp.db import (
     AgentInfo,
-    DATA_DIR,
     get_all_agents,
     is_project_dir,
     set_agent_status_by_session,
