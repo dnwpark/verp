@@ -10,6 +10,8 @@ When adding a new source file, update the file list in both `CLAUDE.md` and `REA
 
 When adding a new agent status value, update the status table in both `CLAUDE.md` and `README.md`.
 
+When adding or removing anything stored in `DATA_DIR`, update the Data section in both `CLAUDE.md` and `README.md`.
+
 ## Project structure
 
 - `src/verp/cli.py` — all CLI commands and argument parsing
@@ -32,11 +34,12 @@ When adding a new agent status value, update the status table in both `CLAUDE.md
 
 ## Data
 
-All persistent state lives in `~/.local/share/verp/`:
+All persistent state lives in `DATA_DIR` (`~/.local/share/verp/`):
 - `verp.db` — SQLite database (schema version defined by `SCHEMA_VERSION` in `db.py`)
-- `repos/` — central repo store (`REPO_DIR` in `git.py`)
+- `repos/` — central repo store (`REPO_DIR` in `git.py`); not bare — bare clones do not set up `refs/remotes/origin/HEAD`, which `primary_branch()` relies on
 - `track.sh` — hook handler deployed by migrations
 - `claude-settings.json` — Claude hook registration config
+- `monitor.pid` — singleton lock file for the agent monitor (`pid:tty` format)
 
 Schema migrations run automatically on startup in `init_internal()`. Each migration version has a corresponding entry in `_MIGRATIONS` in `db.py`. When adding a new migration, increment `SCHEMA_VERSION` and add an entry to `_MIGRATIONS`.
 

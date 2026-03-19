@@ -7,7 +7,7 @@ A CLI tool for managing multi-repository projects using Git worktrees, with buil
 `verp` solves the problem of working across multiple related repositories at once. It groups repos into **projects**, where each project checks out a shared branch across all repos as Git worktrees. When using Claude, `verp` hooks into Claude's event system to track what agents are doing in real time.
 
 **Core concepts:**
-- **Repo** — a Git repository cloned into `~/.local/share/verp/repos/`
+- **Repo** — a Git repository cloned into `DATA_DIR/repos/`
 - **Project** — a named directory containing worktrees for one or more repos, all on a shared branch
 - **Agent** — a running Claude session, tracked via hooks
 
@@ -129,10 +129,12 @@ Note: Only one instance runs at a time — launching a second `verp agent monito
 
 ### Data storage
 
-All persistent state lives in `~/.local/share/verp/`:
+All persistent state lives in `DATA_DIR` (`~/.local/share/verp/`):
 - `verp.db` — SQLite database with `projects` and `agents` tables
-- `repos/` — bare or standard Git clones used as worktree sources
+- `repos/` — Git clones used as worktree sources; not bare — bare clones do not set up `refs/remotes/origin/HEAD`, which is needed to identify the primary branch
 - `track.sh` — shell hook handler deployed by migrations, called by Claude on every hook event
+- `claude-settings.json` — Claude hook registration config
+- `monitor.pid` — singleton lock file for the agent monitor (`pid:tty` format)
 
 ### Hook integration
 
