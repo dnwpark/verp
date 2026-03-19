@@ -1,7 +1,9 @@
 import subprocess
 from pathlib import Path
 
-REPO_DIR = Path.home() / ".local" / "share" / "verp" / "repos"
+from verp.db import DATA_DIR
+
+REPO_DIR = DATA_DIR / "repos"
 
 
 def run(
