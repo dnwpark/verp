@@ -28,8 +28,7 @@ class AgentInfo:
 
 DB_PATH = DATA_DIR / "verp.db"
 _VERSIONS_DIR = Path(__file__).parent / "_versions"
-
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 
 def _db() -> sqlite3.Connection:
@@ -128,6 +127,18 @@ def _migrate_to_v17(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_to_v18(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS config (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+    conn.execute(
+        "INSERT OR IGNORE INTO config (key, value) VALUES ('claude_dir_version', '0')"
+    )
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
@@ -146,20 +157,34 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     15: _migrate_to_v15,
     16: _migrate_to_v16,
     17: _migrate_to_v17,
+    18: _migrate_to_v18,
 }
 
 
-def init_internal() -> None:
+def get_config_value(conn: sqlite3.Connection, key: str) -> int:
+    row = conn.execute(
+        "SELECT value FROM config WHERE key = ?", (key,)
+    ).fetchone()
+    return int(row["value"]) if row is not None else 0
+
+
+def set_config_value(conn: sqlite3.Connection, key: str, version: int) -> None:
+    with conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+            (key, str(version)),
+        )
+
+
+def init_db() -> sqlite3.Connection:
     conn = _db()
     current = conn.execute("PRAGMA user_version").fetchone()[0]
-    if current >= SCHEMA_VERSION:
-        conn.close()
-        return
-    for version in range(current + 1, SCHEMA_VERSION + 1):
-        with conn:
-            _MIGRATIONS[version](conn)
-        conn.execute(f"PRAGMA user_version = {version}")
-    conn.close()
+    if current < SCHEMA_VERSION:
+        for version in range(current + 1, SCHEMA_VERSION + 1):
+            with conn:
+                _MIGRATIONS[version](conn)
+            conn.execute(f"PRAGMA user_version = {version}")
+    return conn
 
 
 def project_exists(name: str) -> bool:

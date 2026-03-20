@@ -39,7 +39,7 @@ from verp.db import (
     get_project,
     get_project_branch,
     projects_using_repo,
-    init_internal,
+    init_db,
     is_project_dir,
     is_repo_in_project,
     project_exists,
@@ -702,7 +702,11 @@ def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "_claude":
         signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
-    init_internal()
+    from contextlib import closing
+    from verp.claude_dir import init_claude_dir
+
+    with closing(init_db()) as conn:
+        init_claude_dir(conn)
     for project_info in all_project_infos():
         init_project(project_info)
 
