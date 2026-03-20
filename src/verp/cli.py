@@ -624,8 +624,13 @@ def _set_winsize(fd: int) -> None:
 
 
 def cmd_claude(args: list[str]) -> int:
+    from verp.paths import CLAUDE_DIR, CONFIG_DIR, USER_CLAUDE_DIR
+
     settings = DATA_DIR / "claude-settings.json"
-    cmd = ["claude", "--settings", str(settings)] + args
+    add_dirs = ["--add-dir", str(CLAUDE_DIR)]
+    if USER_CLAUDE_DIR.is_dir():
+        add_dirs += ["--add-dir", str(CONFIG_DIR)]
+    cmd = ["claude", "--settings", str(settings)] + add_dirs + args
 
     sock_path = f"/tmp/verp-{os.getpid()}.sock"
     listen_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -635,8 +640,10 @@ def cmd_claude(args: list[str]) -> int:
     pid, master_fd = pty.fork()
     if pid == 0:
         listen_sock.close()
-        os.environ["VERP_SOCKET"] = sock_path
-        os.execvp(cmd[0], cmd)
+        env = os.environ.copy()
+        env["VERP_SOCKET"] = sock_path
+        env["CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD"] = "1"
+        os.execvpe(cmd[0], cmd, env)
 
     _set_winsize(master_fd)
     signal.signal(signal.SIGWINCH, lambda _s, _f: _set_winsize(master_fd))
