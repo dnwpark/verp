@@ -28,7 +28,7 @@ class AgentInfo:
 
 DB_PATH = DATA_DIR / "verp.db"
 _VERSIONS_DIR = Path(__file__).parent / "_versions"
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 
 def _db() -> sqlite3.Connection:
@@ -139,6 +139,15 @@ def _migrate_to_v18(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_to_v19(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            verp_pid   INTEGER PRIMARY KEY,
+            session_id TEXT NOT NULL
+        )
+    """)
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
@@ -158,6 +167,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     16: _migrate_to_v16,
     17: _migrate_to_v17,
     18: _migrate_to_v18,
+    19: _migrate_to_v19,
 }
 
 
@@ -404,10 +414,43 @@ def set_agent_status_by_session(session_id: str, status: str) -> None:
     conn.close()
 
 
+def has_agent_by_verp_pid(verp_pid: int) -> bool:
+    if not DB_PATH.exists():
+        return False
+    conn = _db()
+    row = conn.execute(
+        "SELECT 1 FROM agents WHERE verp_pid = ?", (verp_pid,)
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def register_session(verp_pid: int, session_id: str) -> None:
+    conn = _db()
+    with conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO sessions (verp_pid, session_id) VALUES (?, ?)",
+            (verp_pid, session_id),
+        )
+    conn.close()
+
+
+def get_session_id(verp_pid: int) -> str | None:
+    if not DB_PATH.exists():
+        return None
+    conn = _db()
+    row = conn.execute(
+        "SELECT session_id FROM sessions WHERE verp_pid = ?", (verp_pid,)
+    ).fetchone()
+    conn.close()
+    return str(row["session_id"]) if row is not None else None
+
+
 def remove_agents_by_pid(pid: int) -> None:
     conn = _db()
     with conn:
         conn.execute("DELETE FROM agents WHERE verp_pid = ?", (pid,))
+        conn.execute("DELETE FROM sessions WHERE verp_pid = ?", (pid,))
     conn.close()
 
 

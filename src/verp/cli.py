@@ -47,6 +47,9 @@ from verp.db import (
     remove_agents_by_pid,
     remove_repo_from_project,
     set_agents_status_by_pid,
+    register_session,
+    get_session_id,
+    has_agent_by_verp_pid,
 )
 from verp.git import (
     REPO_DIR,
@@ -562,6 +565,11 @@ def cmd_agent_focus(session_id: str) -> int:
 
 
 def cmd_internal_hook_session_start(session_id: str, timestamp: int) -> int:
+    from verp.db import _verp_pid
+
+    pid = _verp_pid()
+    if pid is not None:
+        register_session(pid, session_id)
     return 0
 
 
@@ -633,6 +641,7 @@ def cmd_claude(args: list[str]) -> int:
     cmd = ["claude", "--settings", str(settings)] + add_dirs + args
 
     sock_path = f"/tmp/verp-{os.getpid()}.sock"
+    os.environ["VERP_SOCKET"] = sock_path
     listen_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listen_sock.bind(sock_path)
     listen_sock.listen(1)
@@ -641,7 +650,6 @@ def cmd_claude(args: list[str]) -> int:
     if pid == 0:
         listen_sock.close()
         env = os.environ.copy()
-        env["VERP_SOCKET"] = sock_path
         env["CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD"] = "1"
         os.execvpe(cmd[0], cmd, env)
 
@@ -677,6 +685,16 @@ def cmd_claude(args: list[str]) -> int:
                     from verp.monitor import focus_existing_monitor
 
                     focus_existing_monitor()
+                    pid = os.getpid()
+                    if not has_agent_by_verp_pid(pid):
+                        session_id = get_session_id(pid)
+                        if session_id:
+                            set_agent_status(
+                                session_id,
+                                os.getcwd(),
+                                "waiting_prompt",
+                                int(time.time() * 1000),
+                            )
                     data = data.replace(b"\x1c", b"")
                 if not data:
                     continue
@@ -700,8 +718,11 @@ def cmd_claude(args: list[str]) -> int:
         except Exception:
             pass
 
-    _, status = os.waitpid(pid, 0)
-    return os.waitstatus_to_exitcode(status)
+    try:
+        _, status = os.waitpid(pid, 0)
+        return os.waitstatus_to_exitcode(status)
+    except ChildProcessError:
+        return 0
 
 
 def main() -> None:
