@@ -65,3 +65,5 @@ DB schema migrations run automatically on startup via `init_db()`. Each migratio
 - `waiting_permission` — waiting for a permission decision
 - `asking_question` — Claude is asking the user a question via AskUserQuestion
 - `paused` — manually set via the monitor (`p`) to de-emphasize idle agents
+
+Agents can be cleared via `verp agent clear <id>` or `Delete` in the monitor. Cleared agents re-appear if they send another status update; clearing is mainly useful for agents that did not properly terminate.

@@ -13,6 +13,7 @@ from verp.agent import format_age
 from verp.paths import DATA_DIR
 from verp.db import (
     AgentInfo,
+    clear_agent_by_prefix,
     get_all_agents,
     is_project_dir,
     set_agent_status_by_session,
@@ -124,7 +125,7 @@ class AgentMonitor:
         return [
             (
                 "class:status-bar",
-                "  ↑↓ navigate   Enter focus   p pause/unpause   q quit",
+                "  ↑↓ navigate   Enter focus   p pause/unpause   Del clear   q quit",
             )
         ]
 
@@ -161,6 +162,10 @@ class AgentMonitor:
         def _pause(event: KeyPressEvent) -> None:
             self._toggle_paused()
 
+        @kb.add("delete")
+        def _delete(event: KeyPressEvent) -> None:
+            self._clear_selected()
+
         @kb.add("q")
         @kb.add("c-c")
         def _quit(event: KeyPressEvent) -> None:
@@ -188,6 +193,12 @@ class AgentMonitor:
             style=Style.from_dict({"status-bar": "reverse"}),
             full_screen=True,
         )
+
+    def _clear_selected(self) -> None:
+        if self._selected is None or self._selected >= len(self._agents):
+            return
+        agent = self._agents[self._selected]
+        clear_agent_by_prefix(agent.session_id)
 
     def _toggle_paused(self) -> None:
         if self._selected is None or self._selected >= len(self._agents):

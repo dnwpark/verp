@@ -86,6 +86,8 @@ verp agent clear <id>       # Remove a stale agent entry by session ID prefix
 verp agent focus <id>       # Focus the terminal window running an agent
 ```
 
+`verp agent clear` is mainly useful for agents that did not properly terminate. Cleared agents re-appear if they send another status update.
+
 #### Agent Monitor
 
 ![Agent monitor screenshot](images/agent-monitor.png)
@@ -105,6 +107,7 @@ Each row shows:
 | `Enter` | Focus the selected agent's terminal window |
 | `Esc` | Deselect |
 | `p` | Toggle pause/unpause on selected agent |
+| `Delete` | Clear selected agent entry (see `verp agent clear`) |
 | `q` / `Ctrl+C` | Quit |
 
 **Status colors:**
