@@ -130,11 +130,15 @@ Note: Only one instance runs at a time — launching a second `verp agent monito
 ### Data storage
 
 All persistent state lives in `DATA_DIR` (`~/.local/share/verp/`):
-- `verp.db` — SQLite database with `projects` and `agents` tables
+- `verp.db` — SQLite database with `projects`, `agents`, and `config` tables
 - `repos/` — Git clones used as worktree sources; not bare — bare clones do not set up `refs/remotes/origin/HEAD`, which is needed to identify the primary branch
 - `track.sh` — shell hook handler deployed by migrations, called by Claude on every hook event
 - `claude-settings.json` — Claude hook registration config
 - `monitor.pid` — singleton lock file for the agent monitor (`pid:tty` format)
+- `claude_dir/` — isolated directory passed to `verp claude` via `--add-dir`; contains `.claude/` with managed skills and CLAUDE.md
+
+User-customizable Claude config lives in `CONFIG_DIR` (`~/.config/verp/`):
+- `.claude/` — user-authored skills and CLAUDE.md; passed to `verp claude` via `--add-dir` if it exists
 
 ### Hook integration
 
@@ -151,15 +155,20 @@ All persistent state lives in `DATA_DIR` (`~/.local/share/verp/`):
 | `src/verp/cli.py` | All CLI commands and argument parsing |
 | `src/verp/db.py` | SQLite layer and schema migrations |
 | `src/verp/git.py` | Thin wrappers around git subprocess calls |
+| `src/verp/paths.py` | All path constants (`DATA_DIR`, `CLAUDE_DIR`, `CONFIG_DIR`, `USER_CLAUDE_DIR`) |
+| `src/verp/claude_dir.py` | Managed `CLAUDE_DIR` content versioning and sync |
 | `src/verp/claude_permission_hook.py` | Permission dialog rendering and socket communication |
 | `src/verp/status.py` | Rich-formatted git status display |
 | `src/verp/project.py` | Project migration logic for config updates |
 | `src/verp/_versions/` | Versioned `track.sh` and `claude_settings.json` for each schema version |
 | `src/verp/focus/` | Terminal window focus module (extensible, platform/terminal dispatch) |
+| `_claude/` | Bundled managed Claude config (skills, CLAUDE.md); symlinked into package as `src/verp/_claude` |
 
 ### Schema migrations
 
-`db.py` runs migrations automatically on startup. Each version in `_versions/` may update `track.sh` and/or `claude_settings.json` deployed to the data directory.
+`db.py` runs migrations automatically on startup via `init_db()`. Each version in `_versions/` may update `track.sh` and/or `claude_settings.json` deployed to `DATA_DIR`.
+
+`claude_dir.py` manages `CLAUDE_DIR` content separately via `CLAUDE_DIR_VERSION`. When bundled content in `_claude/` changes, increment `CLAUDE_DIR_VERSION` and add a migration to `claude_dir.py`.
 
 ### Development workflow
 

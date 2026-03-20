@@ -18,10 +18,13 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
 - `src/verp/monitor.py` — interactive agent monitor TUI (prompt_toolkit)
 - `src/verp/db.py` — SQLite layer and schema migrations
 - `src/verp/git.py` — git subprocess wrappers
+- `src/verp/paths.py` — all path constants (`DATA_DIR`, `CLAUDE_DIR`, `CONFIG_DIR`, `USER_CLAUDE_DIR`)
+- `src/verp/claude_dir.py` — managed `CLAUDE_DIR` content versioning and sync
 - `src/verp/claude_permission_hook.py` — permission dialog and socket communication
 - `src/verp/status.py` — rich-formatted git status display
 - `src/verp/project.py` — project migration logic
 - `src/verp/_versions/` — versioned `track.sh` and `claude_settings.json` per schema version
+- `_claude/` — bundled managed Claude config (skills, CLAUDE.md); symlinked into package as `src/verp/_claude`
 - `src/verp/focus/` — terminal window focus module
   - `__init__.py` — public API: `focus_by_tty(tty)`, `pid_to_tty(pid)`
   - `_base.py` — `TerminalFocuser` protocol
@@ -40,8 +43,14 @@ All persistent state lives in `DATA_DIR` (`~/.local/share/verp/`):
 - `track.sh` — hook handler deployed by migrations
 - `claude-settings.json` — Claude hook registration config
 - `monitor.pid` — singleton lock file for the agent monitor (`pid:tty` format)
+- `claude_dir/` — isolated directory passed to `verp claude` via `--add-dir`; contains `.claude/` with managed skills and CLAUDE.md (`CLAUDE_DIR` in `paths.py`)
 
-Schema migrations run automatically on startup in `init_internal()`. Each migration version has a corresponding entry in `_MIGRATIONS` in `db.py`. When adding a new migration, increment `SCHEMA_VERSION` and add an entry to `_MIGRATIONS`.
+User-customizable Claude config lives in `CONFIG_DIR` (`~/.config/verp/`):
+- `.claude/` — user-authored skills and CLAUDE.md (`USER_CLAUDE_DIR` in `paths.py`); passed via `--add-dir` if it exists
+
+DB schema migrations run automatically on startup via `init_db()`. Each migration version has a corresponding entry in `_MIGRATIONS` in `db.py`. When adding a new migration, increment `SCHEMA_VERSION` and add an entry to `_MIGRATIONS`.
+
+`claude_dir/` content is versioned separately via `CLAUDE_DIR_VERSION` in `claude_dir.py` and tracked in the `config` table. When updating bundled content in `_claude/`, increment `CLAUDE_DIR_VERSION` and add an entry to `_MIGRATIONS` in `claude_dir.py`.
 
 ## Hook integration
 
