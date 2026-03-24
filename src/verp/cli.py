@@ -652,6 +652,16 @@ def _set_winsize(fd: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, size)
 
 
+def get_project_system_prompt() -> str | None:
+    project_info = get_current_project()
+    if project_info is None:
+        return None
+    return (
+        f"You are working inside a verp project named '{project_info.name}' "
+        f"at {project_info.path}."
+    )
+
+
 def cmd_claude(args: list[str]) -> int:
     from verp.paths import CLAUDE_DIR, CONFIG_DIR, USER_CLAUDE_DIR
 
@@ -659,7 +669,16 @@ def cmd_claude(args: list[str]) -> int:
     add_dirs = ["--add-dir", str(CLAUDE_DIR)]
     if USER_CLAUDE_DIR.is_dir():
         add_dirs += ["--add-dir", str(CONFIG_DIR)]
-    cmd = ["claude", "--settings", str(settings)] + add_dirs + args
+    system_prompt = get_project_system_prompt()
+    append_system = (
+        ["--append-system-prompt", system_prompt] if system_prompt else []
+    )
+    cmd = (
+        ["claude", "--settings", str(settings)]
+        + add_dirs
+        + append_system
+        + args
+    )
 
     sock_path = f"/tmp/verp-{os.getpid()}.sock"
     os.environ["VERP_SOCKET"] = sock_path
