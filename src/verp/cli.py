@@ -242,6 +242,27 @@ def cmd_remove(repo: str) -> int:
     return 0
 
 
+def cmd_where() -> int:
+    project_info = get_current_project()
+    if project_info is None:
+        print("not in a verp project")
+        return 1
+    cwd = Path.cwd()
+    project_dir = Path(project_info.path)
+    rel = (
+        cwd.relative_to(project_dir) if cwd.is_relative_to(project_dir) else cwd
+    )
+    worktree = get_current_worktree()
+    print(f"project:  {project_info.name}")
+    print(f"path:     {project_dir}")
+    print(f"branch:   {project_info.branch}")
+    if worktree:
+        print(f"repo:     {worktree.repo}")
+    if rel != Path("."):
+        print(f"relative: {rel}")
+    return 0
+
+
 def cmd_status() -> int:
     project_info = get_current_project()
     if project_info is None:
@@ -785,6 +806,7 @@ def main() -> None:
     sub.add_parser("list", help="list all projects")
     sub.add_parser("pull", help="pull repos and fetch worktrees")
     sub.add_parser("status", help="show git status of current project")
+    sub.add_parser("where", help="show current verp project and location")
 
     sub.add_parser(
         "delete", help="delete the current project and its worktrees"
@@ -893,6 +915,8 @@ def main() -> None:
         sys.exit(cmd_add(args.repo))
     elif args.command == "remove":
         sys.exit(cmd_remove(args.repo))
+    elif args.command == "where":
+        sys.exit(cmd_where())
     elif args.command == "status":
         sys.exit(cmd_status())
     elif args.command == "delete":

@@ -56,6 +56,7 @@ verp pull                   # Pull all repos and fetch latest worktrees
 **Inside a project directory:**
 
 ```bash
+verp where                  # Show current project, branch, repo, and relative path
 verp status                 # Git status across all worktrees in the project
 verp add <repo>             # Add another repo to the project; if a remote branch exists, check it out
 verp remove <repo>          # Remove a repo from the project, deleting its worktree and branch
