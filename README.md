@@ -120,10 +120,19 @@ Each row shows:
 | `asking_question` | orange | Agent is asking the user a question |
 | `paused` | grey | Manually set as paused |
 
-**Jump to monitor from a Claude session:**
-Press `Ctrl+\` in any `verp claude` session to focus a running monitor window.
-
 Note: Only one instance runs at a time — launching a second `verp agent monitor` focuses the existing one instead of opening a new window.
+
+**Jump to monitor from a Claude session:**
+Press `Ctrl+\` in any `verp claude` session to focus a running monitor window. From the monitor, press `Enter` on a selected agent to jump back.
+
+**Terminal support for window focusing:**
+| Terminal | Support |
+|---|---|
+| Apple Terminal | ✓ |
+| iTerm2 | ✓ |
+| kitty | ✓\* |
+
+\* kitty requires `allow_remote_control yes` in kitty.conf for per-window focus. verp adds this automatically on first `verp claude` run inside kitty.
 
 ---
 
