@@ -12,7 +12,7 @@ verp = "verp.cli:main"
 packages = ["src/verp"]
 
 [dependency-groups]
-dev = ["black", "mypy"]
+dev = ["black", "mypy", "pytest"]
 
 [tool.black]
 line-length = 80
