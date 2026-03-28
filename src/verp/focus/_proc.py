@@ -1,8 +1,12 @@
 import os
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 
 from verp.focus._base import TerminalFocuser
+
+if TYPE_CHECKING:
+    from verp.db import TerminalInfo
 
 TERMINAL_EMULATORS = frozenset(
     {
@@ -45,14 +49,14 @@ def pid_to_tty(pid: int) -> str | None:
         return None
 
 
-def focus_by_tty(tty: str) -> bool:
+def focus_by_tty(tty: str, terminal: "TerminalInfo | None" = None) -> bool:
     from verp.focus._focusers._wezterm import WeztermFocuser
     from verp.focus._focusers._kitty import KittyFocuser
     from verp.focus._focusers._tmux import TmuxFocuser
 
     focusers: list[TerminalFocuser] = [
         WeztermFocuser(),
-        KittyFocuser(),
+        KittyFocuser(terminal=terminal),
         TmuxFocuser(),
     ]
 

@@ -1,8 +1,10 @@
+import json
 import shutil
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from verp.paths import DATA_DIR
 
@@ -17,6 +19,12 @@ class ProjectInfo:
 
 
 @dataclass
+class TerminalInfo:
+    app: str
+    data: dict[str, Any]
+
+
+@dataclass
 class AgentInfo:
     session_id: str
     directory: str
@@ -24,11 +32,12 @@ class AgentInfo:
     tool: str | None
     updated_at: int
     verp_pid: int | None = None
+    terminal: TerminalInfo | None = None
 
 
 DB_PATH = DATA_DIR / "verp.db"
 _VERSIONS_DIR = Path(__file__).parent / "_versions"
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 
 
 def _db() -> sqlite3.Connection:
@@ -148,6 +157,16 @@ def _migrate_to_v19(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migrate_to_v20(conn: sqlite3.Connection) -> None:
+    conn.execute("ALTER TABLE agents ADD COLUMN terminal_app  TEXT")
+    conn.execute("ALTER TABLE agents ADD COLUMN terminal_data TEXT")
+    kitty_dir = DATA_DIR / "kitty"
+    kitty_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        _VERSIONS_DIR / "20" / "kitty" / "verp.conf", kitty_dir / "verp.conf"
+    )
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
@@ -168,6 +187,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     17: _migrate_to_v17,
     18: _migrate_to_v18,
     19: _migrate_to_v19,
+    20: _migrate_to_v20,
 }
 
 
@@ -194,6 +214,9 @@ def init_db() -> sqlite3.Connection:
             with conn:
                 _MIGRATIONS[version](conn)
             conn.execute(f"PRAGMA user_version = {version}")
+    from verp.focus._focusers._kitty import ensure_kitty_config
+
+    ensure_kitty_config()
     return conn
 
 
@@ -384,21 +407,45 @@ def _verp_pid() -> int | None:
         return None
 
 
+def _terminal_info() -> TerminalInfo | None:
+    import os
+
+    if listen_on := os.environ.get("KITTY_LISTEN_ON"):
+        return TerminalInfo(app="kitty", data={"listen_on": listen_on})
+    if os.environ.get("KITTY_WINDOW_ID"):
+        return TerminalInfo(app="kitty", data={})
+    if term_program := os.environ.get("TERM_PROGRAM"):
+        return TerminalInfo(app=term_program, data={})
+    return None
+
+
 def set_agent_status(
     session_id: str, directory: str, status: str, timestamp: int
 ) -> None:
     """Create agent if needed and set status. Uses timestamp guard."""
     pid = _verp_pid()
+    terminal = _terminal_info()
+    terminal_app = terminal.app if terminal else None
+    terminal_data = json.dumps(terminal.data) if terminal else None
     conn = _db()
     with conn:
         conn.execute(
-            "INSERT INTO agents (session_id, directory, status, tool, updated_at, verp_pid)"
-            " VALUES (?, ?, ?, NULL, ?, ?)"
+            "INSERT INTO agents"
+            " (session_id, directory, status, tool, updated_at, verp_pid, terminal_app, terminal_data)"
+            " VALUES (?, ?, ?, NULL, ?, ?, ?, ?)"
             " ON CONFLICT(session_id) DO UPDATE SET"
             "     status = excluded.status,"
             "     updated_at = excluded.updated_at"
             " WHERE excluded.updated_at >= agents.updated_at",
-            (session_id, directory, status, timestamp, pid),
+            (
+                session_id,
+                directory,
+                status,
+                timestamp,
+                pid,
+                terminal_app,
+                terminal_data,
+            ),
         )
     conn.close()
 
@@ -508,12 +555,27 @@ def clear_agent_by_prefix(prefix: str) -> bool:
     return True
 
 
+def _terminal_from_row(row: sqlite3.Row) -> TerminalInfo | None:
+    app = row["terminal_app"]
+    if not app:
+        return None
+    data: dict[str, Any] = {}
+    raw = row["terminal_data"]
+    if raw:
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+    return TerminalInfo(app=str(app), data=data)
+
+
 def get_all_agents() -> list[AgentInfo]:
     if not DB_PATH.exists():
         return []
     conn = _db()
     rows = conn.execute(
-        "SELECT session_id, directory, status, tool, updated_at, verp_pid"
+        "SELECT session_id, directory, status, tool, updated_at, verp_pid,"
+        "       terminal_app, terminal_data"
         " FROM agents ORDER BY updated_at DESC"
     ).fetchall()
     conn.close()
@@ -527,6 +589,7 @@ def get_all_agents() -> list[AgentInfo]:
             verp_pid=(
                 int(row["verp_pid"]) if row["verp_pid"] is not None else None
             ),
+            terminal=_terminal_from_row(row),
         )
         for row in rows
     ]
@@ -537,7 +600,8 @@ def get_agent_by_prefix(prefix: str) -> AgentInfo | None:
         return None
     conn = _db()
     row = conn.execute(
-        "SELECT session_id, directory, status, tool, updated_at, verp_pid"
+        "SELECT session_id, directory, status, tool, updated_at, verp_pid,"
+        "       terminal_app, terminal_data"
         " FROM agents WHERE session_id LIKE ?",
         (prefix + "%",),
     ).fetchone()
@@ -551,4 +615,5 @@ def get_agent_by_prefix(prefix: str) -> AgentInfo | None:
         tool=str(row["tool"]) if row["tool"] is not None else None,
         updated_at=int(row["updated_at"]),
         verp_pid=int(row["verp_pid"]) if row["verp_pid"] is not None else None,
+        terminal=_terminal_from_row(row),
     )

@@ -77,16 +77,17 @@ def _ancestor_commands(pid: int, depth: int = 8) -> list[str]:
 
 
 # Maps substrings in ancestor command names to the macOS app name to activate
-_EDITOR_PATTERNS: list[tuple[str, str]] = [
+_APP_PATTERNS: list[tuple[str, str]] = [
     ("Cursor", "Cursor"),
     ("Code", "Code"),
+    ("kitty", "kitty"),
 ]
 
 
 def _detect_editor(tty: str) -> str | None:
     for pid in _tty_owner_pids(tty):
         for cmd in _ancestor_commands(pid):
-            for pattern, app in _EDITOR_PATTERNS:
+            for pattern, app in _APP_PATTERNS:
                 if pattern in cmd:
                     return app
     return None

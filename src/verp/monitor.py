@@ -1,5 +1,7 @@
 import asyncio
+import json
 import os
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from prompt_toolkit import Application
@@ -13,6 +15,7 @@ from verp.agent import format_age
 from verp.paths import DATA_DIR
 from verp.db import (
     AgentInfo,
+    TerminalInfo,
     clear_agent_by_prefix,
     get_all_agents,
     is_project_dir,
@@ -23,10 +26,36 @@ from verp.focus import focus_by_tty, pid_to_tty
 _LOCK_FILE = DATA_DIR / "monitor.pid"
 
 
+@dataclass
+class MonitorLock:
+    pid: int
+    tty: str
+    terminal: TerminalInfo | None = None
+
+    def to_json(self) -> str:
+        return json.dumps(asdict(self))
+
+    @classmethod
+    def from_json(cls, text: str) -> "MonitorLock":
+        d = json.loads(text)
+        terminal_d = d.get("terminal")
+        terminal = (
+            TerminalInfo(
+                app=terminal_d["app"], data=terminal_d.get("data") or {}
+            )
+            if terminal_d
+            else None
+        )
+        return cls(pid=d["pid"], tty=d["tty"], terminal=terminal)
+
+
 def _write_lock() -> None:
+    from verp.db import _terminal_info
+
     tty = pid_to_tty(os.getpid())
     if tty:
-        _LOCK_FILE.write_text(f"{os.getpid()}:{tty}")
+        lock = MonitorLock(pid=os.getpid(), tty=tty, terminal=_terminal_info())
+        _LOCK_FILE.write_text(lock.to_json())
 
 
 def _clear_lock() -> None:
@@ -38,12 +67,10 @@ def focus_existing_monitor() -> bool:
     if not _LOCK_FILE.exists():
         return False
     try:
-        pid_str, tty = _LOCK_FILE.read_text().split(":", 1)
-        pid = int(pid_str)
-        os.kill(pid, 0)  # check liveness
-        return focus_by_tty(tty)
-    except (ValueError, OSError):
-        _clear_lock()
+        lock = MonitorLock.from_json(_LOCK_FILE.read_text())
+        os.kill(lock.pid, 0)  # check liveness
+        return focus_by_tty(lock.tty, terminal=lock.terminal)
+    except Exception:
         return False
 
 
@@ -208,8 +235,6 @@ class AgentMonitor:
         set_agent_status_by_session(agent.session_id, new_status)
 
     def _focus_selected(self) -> None:
-        from verp.focus import focus_by_tty, pid_to_tty
-
         if self._selected is None or self._selected >= len(self._agents):
             return
         agent = self._agents[self._selected]
@@ -217,7 +242,7 @@ class AgentMonitor:
             return
         tty = pid_to_tty(agent.verp_pid)
         if tty:
-            focus_by_tty(tty)
+            focus_by_tty(tty, terminal=agent.terminal)
 
     async def _refresh_loop(self) -> None:
         while True:

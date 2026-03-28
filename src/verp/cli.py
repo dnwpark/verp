@@ -38,6 +38,7 @@ from verp.db import (
     get_all_agents,
     get_project,
     get_project_branch,
+    _terminal_info,
     projects_using_repo,
     init_db,
     is_project_dir,
@@ -696,6 +697,12 @@ def cmd_claude(args: list[str]) -> int:
     _set_winsize(master_fd)
     signal.signal(signal.SIGWINCH, lambda _s, _f: _set_winsize(master_fd))
 
+    # Ctrl+\ sequences: raw \x1c plus kitty extended keyboard protocol
+    _terminal = _terminal_info()
+    jump_sequences: list[bytes] = [b"\x1c"]
+    if _terminal and _terminal.app == "kitty":
+        jump_sequences.append(b"\x1b[92;5u")
+
     stdin_fd = sys.stdin.fileno()
     old = termios.tcgetattr(stdin_fd)
     tty.setraw(stdin_fd)
@@ -721,7 +728,7 @@ def cmd_claude(args: list[str]) -> int:
                     set_agents_status_by_pid(
                         os.getpid(), "waiting_prompt", int(time.time() * 1000)
                     )
-                if b"\x1c" in data:
+                if any(seq in data for seq in jump_sequences):
                     from verp.monitor import focus_existing_monitor
 
                     focus_existing_monitor()
@@ -735,7 +742,8 @@ def cmd_claude(args: list[str]) -> int:
                                 "waiting_prompt",
                                 int(time.time() * 1000),
                             )
-                    data = data.replace(b"\x1c", b"")
+                    for seq in jump_sequences:
+                        data = data.replace(seq, b"")
                 if not data:
                     continue
                 try:
