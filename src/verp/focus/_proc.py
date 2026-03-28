@@ -52,11 +52,13 @@ def pid_to_tty(pid: int) -> str | None:
 def focus_by_tty(tty: str, terminal: "TerminalInfo | None" = None) -> bool:
     from verp.focus._focusers._wezterm import WeztermFocuser
     from verp.focus._focusers._kitty import KittyFocuser
+    from verp.focus._focusers._iterm2 import ITermFocuser
     from verp.focus._focusers._tmux import TmuxFocuser
 
     focusers: list[TerminalFocuser] = [
         WeztermFocuser(),
         KittyFocuser(terminal=terminal),
+        ITermFocuser(terminal=terminal),
         TmuxFocuser(),
     ]
 

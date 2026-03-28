@@ -33,6 +33,7 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
   - `_focusers/_linux_x11.py` — Linux X11 focuser via ewmh/xdotool
   - `_focusers/_wezterm.py` — WezTerm CLI focuser
   - `_focusers/_kitty.py` — kitty remote control focuser
+  - `_focusers/_iterm2.py` — iTerm2 AppleScript focuser
   - `_focusers/_tmux.py` — tmux pane focuser
 
 ## Data

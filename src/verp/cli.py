@@ -697,11 +697,13 @@ def cmd_claude(args: list[str]) -> int:
     _set_winsize(master_fd)
     signal.signal(signal.SIGWINCH, lambda _s, _f: _set_winsize(master_fd))
 
-    # Ctrl+\ sequences: raw \x1c plus kitty extended keyboard protocol
+    # Ctrl+\ sequences: raw \x1c plus terminal-specific extended keyboard encodings
     _terminal = _terminal_info()
     jump_sequences: list[bytes] = [b"\x1c"]
     if _terminal and _terminal.app == "kitty":
         jump_sequences.append(b"\x1b[92;5u")
+    elif _terminal and _terminal.app == "iTerm.app":
+        jump_sequences.append(b"\x1b[27;5;92~")
 
     stdin_fd = sys.stdin.fileno()
     old = termios.tcgetattr(stdin_fd)
