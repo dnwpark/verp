@@ -35,20 +35,23 @@ class AgentInfo:
     terminal: TerminalInfo | None = None
 
 
-DB_PATH = DATA_DIR / "verp.db"
 _VERSIONS_DIR = Path(__file__).parent / "_versions"
 SCHEMA_VERSION = 20
 
 
-def _db() -> sqlite3.Connection:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+def _db_path(data_dir: Path) -> Path:
+    return data_dir / "verp.db"
+
+
+def _db(data_dir: Path = DATA_DIR) -> sqlite3.Connection:
+    data_dir.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(_db_path(data_dir))
     conn.execute("PRAGMA foreign_keys = ON")
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def _migrate_to_v1(conn: sqlite3.Connection) -> None:
+def _migrate_to_v1(conn: sqlite3.Connection, data_dir: Path) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS projects (
             name TEXT PRIMARY KEY,
@@ -66,13 +69,13 @@ def _migrate_to_v1(conn: sqlite3.Connection) -> None:
     """)
 
 
-def _migrate_to_v2(conn: sqlite3.Connection) -> None:
+def _migrate_to_v2(conn: sqlite3.Connection, data_dir: Path) -> None:
     conn.execute(
         "ALTER TABLE projects ADD COLUMN version INTEGER NOT NULL DEFAULT 0"
     )
 
 
-def _migrate_to_v4(conn: sqlite3.Connection) -> None:
+def _migrate_to_v4(conn: sqlite3.Connection, data_dir: Path) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS agents (
             session_id   TEXT PRIMARY KEY,
@@ -84,35 +87,35 @@ def _migrate_to_v4(conn: sqlite3.Connection) -> None:
     """)
 
 
-def _migrate_to_v6(conn: sqlite3.Connection) -> None:
+def _migrate_to_v6(conn: sqlite3.Connection, data_dir: Path) -> None:
     conn.execute("UPDATE agents SET updated_at = updated_at * 1000")
 
 
-def _migrate_to_v11(conn: sqlite3.Connection) -> None:
+def _migrate_to_v11(conn: sqlite3.Connection, data_dir: Path) -> None:
     v11 = _VERSIONS_DIR / "11"
 
-    track = DATA_DIR / "track.sh"
+    track = data_dir / "track.sh"
     shutil.copy2(v11 / "track.sh", track)
     track.chmod(0o755)
 
     shutil.copy2(
-        v11 / "claude_settings.json", DATA_DIR / "claude-settings.json"
+        v11 / "claude_settings.json", data_dir / "claude-settings.json"
     )
 
 
-def _migrate_to_v14(conn: sqlite3.Connection) -> None:
-    track = DATA_DIR / "track.sh"
+def _migrate_to_v14(conn: sqlite3.Connection, data_dir: Path) -> None:
+    track = data_dir / "track.sh"
     shutil.copy2(_VERSIONS_DIR / "14" / "track.sh", track)
     track.chmod(0o755)
 
 
-def _migrate_to_v15(conn: sqlite3.Connection) -> None:
-    track = DATA_DIR / "track.sh"
+def _migrate_to_v15(conn: sqlite3.Connection, data_dir: Path) -> None:
+    track = data_dir / "track.sh"
     shutil.copy2(_VERSIONS_DIR / "15" / "track.sh", track)
     track.chmod(0o755)
 
 
-def _migrate_to_v13(conn: sqlite3.Connection) -> None:
+def _migrate_to_v13(conn: sqlite3.Connection, data_dir: Path) -> None:
     conn.execute("DROP TABLE IF EXISTS agents")
     conn.execute("""
         CREATE TABLE agents (
@@ -125,18 +128,18 @@ def _migrate_to_v13(conn: sqlite3.Connection) -> None:
     """)
 
 
-def _migrate_to_v16(conn: sqlite3.Connection) -> None:
+def _migrate_to_v16(conn: sqlite3.Connection, data_dir: Path) -> None:
     conn.execute("ALTER TABLE agents ADD COLUMN verp_pid INTEGER")
 
 
-def _migrate_to_v17(conn: sqlite3.Connection) -> None:
+def _migrate_to_v17(conn: sqlite3.Connection, data_dir: Path) -> None:
     shutil.copy2(
         _VERSIONS_DIR / "17" / "claude_settings.json",
-        DATA_DIR / "claude-settings.json",
+        data_dir / "claude-settings.json",
     )
 
 
-def _migrate_to_v18(conn: sqlite3.Connection) -> None:
+def _migrate_to_v18(conn: sqlite3.Connection, data_dir: Path) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS config (
             key   TEXT PRIMARY KEY,
@@ -148,7 +151,7 @@ def _migrate_to_v18(conn: sqlite3.Connection) -> None:
     )
 
 
-def _migrate_to_v19(conn: sqlite3.Connection) -> None:
+def _migrate_to_v19(conn: sqlite3.Connection, data_dir: Path) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             verp_pid   INTEGER PRIMARY KEY,
@@ -157,29 +160,29 @@ def _migrate_to_v19(conn: sqlite3.Connection) -> None:
     """)
 
 
-def _migrate_to_v20(conn: sqlite3.Connection) -> None:
+def _migrate_to_v20(conn: sqlite3.Connection, data_dir: Path) -> None:
     conn.execute("ALTER TABLE agents ADD COLUMN terminal_app  TEXT")
     conn.execute("ALTER TABLE agents ADD COLUMN terminal_data TEXT")
-    kitty_dir = DATA_DIR / "kitty"
+    kitty_dir = data_dir / "kitty"
     kitty_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(
         _VERSIONS_DIR / "20" / "kitty" / "verp.conf", kitty_dir / "verp.conf"
     )
 
 
-_MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
+_MIGRATIONS: dict[int, Callable[[sqlite3.Connection, Path], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
-    3: lambda conn: None,
+    3: lambda conn, _: None,
     4: _migrate_to_v4,
-    5: lambda conn: None,
+    5: lambda conn, _: None,
     6: _migrate_to_v6,
-    7: lambda conn: None,
-    8: lambda conn: None,
-    9: lambda conn: None,
-    10: lambda conn: None,
+    7: lambda conn, _: None,
+    8: lambda conn, _: None,
+    9: lambda conn, _: None,
+    10: lambda conn, _: None,
     11: _migrate_to_v11,
-    12: lambda conn: None,
+    12: lambda conn, _: None,
     13: _migrate_to_v13,
     14: _migrate_to_v14,
     15: _migrate_to_v15,
@@ -206,13 +209,13 @@ def set_config_value(conn: sqlite3.Connection, key: str, version: int) -> None:
         )
 
 
-def init_db() -> sqlite3.Connection:
-    conn = _db()
+def init_db(data_dir: Path) -> sqlite3.Connection:
+    conn = _db(data_dir)
     current = conn.execute("PRAGMA user_version").fetchone()[0]
     if current < SCHEMA_VERSION:
         for version in range(current + 1, SCHEMA_VERSION + 1):
             with conn:
-                _MIGRATIONS[version](conn)
+                _MIGRATIONS[version](conn, data_dir)
             conn.execute(f"PRAGMA user_version = {version}")
     from verp.focus._focusers._kitty import ensure_kitty_config
 
@@ -221,7 +224,7 @@ def init_db() -> sqlite3.Connection:
 
 
 def project_exists(name: str) -> bool:
-    if not DB_PATH.exists():
+    if not _db_path(DATA_DIR).exists():
         return False
     conn = _db()
     row = conn.execute(
@@ -232,7 +235,7 @@ def project_exists(name: str) -> bool:
 
 
 def get_project(name: str) -> ProjectInfo | None:
-    if not DB_PATH.exists():
+    if not _db_path(DATA_DIR).exists():
         return None
     conn = _db()
     row = conn.execute(
@@ -300,7 +303,7 @@ def delete_project(name: str) -> None:
 
 
 def all_project_infos() -> list[ProjectInfo]:
-    if not DB_PATH.exists():
+    if not _db_path(DATA_DIR).exists():
         return []
     conn = _db()
     rows = conn.execute(
@@ -330,7 +333,7 @@ def all_project_infos() -> list[ProjectInfo]:
 
 
 def get_project_branch(name: str) -> str | None:
-    if not DB_PATH.exists():
+    if not _db_path(DATA_DIR).exists():
         return None
     conn = _db()
     row = conn.execute(
@@ -341,7 +344,7 @@ def get_project_branch(name: str) -> str | None:
 
 
 def is_repo_in_project(project_name: str, repo: str) -> bool:
-    if not DB_PATH.exists():
+    if not _db_path(DATA_DIR).exists():
         return False
     conn = _db()
     row = conn.execute(
@@ -353,7 +356,7 @@ def is_repo_in_project(project_name: str, repo: str) -> bool:
 
 
 def projects_using_repo(repo: str) -> list[str]:
-    if not DB_PATH.exists():
+    if not _db_path(DATA_DIR).exists():
         return []
     conn = _db()
     rows = conn.execute(
@@ -385,7 +388,7 @@ def remove_repo_from_project(project_name: str, repo: str) -> None:
 
 
 def is_project_dir(path: Path) -> bool:
-    if not DB_PATH.exists():
+    if not _db_path(DATA_DIR).exists():
         return False
     conn = _db()
     row = conn.execute(
@@ -462,7 +465,7 @@ def set_agent_status_by_session(session_id: str, status: str) -> None:
 
 
 def has_agent_by_verp_pid(verp_pid: int) -> bool:
-    if not DB_PATH.exists():
+    if not _db_path(DATA_DIR).exists():
         return False
     conn = _db()
     row = conn.execute(
@@ -483,7 +486,7 @@ def register_session(verp_pid: int, session_id: str) -> None:
 
 
 def get_session_id(verp_pid: int) -> str | None:
-    if not DB_PATH.exists():
+    if not _db_path(DATA_DIR).exists():
         return None
     conn = _db()
     row = conn.execute(
@@ -570,7 +573,7 @@ def _terminal_from_row(row: sqlite3.Row) -> TerminalInfo | None:
 
 
 def get_all_agents() -> list[AgentInfo]:
-    if not DB_PATH.exists():
+    if not _db_path(DATA_DIR).exists():
         return []
     conn = _db()
     rows = conn.execute(
@@ -596,7 +599,7 @@ def get_all_agents() -> list[AgentInfo]:
 
 
 def get_agent_by_prefix(prefix: str) -> AgentInfo | None:
-    if not DB_PATH.exists():
+    if not _db_path(DATA_DIR).exists():
         return None
     conn = _db()
     row = conn.execute(

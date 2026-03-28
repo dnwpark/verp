@@ -781,7 +781,7 @@ def main() -> None:
     from contextlib import closing
     from verp.claude_dir import init_claude_dir
 
-    with closing(init_db()) as conn:
+    with closing(init_db(DATA_DIR)) as conn:
         init_claude_dir(conn)
     for project_info in all_project_infos():
         init_project(project_info)
