@@ -17,6 +17,7 @@ import textwrap
 from dataclasses import dataclass
 
 from verp.claude_permission_hook import (
+    _query_cursor_pos,
     cmd_internal_hook_permission_request,
     handle_permission_request,
 )
@@ -664,7 +665,10 @@ def get_project_system_prompt() -> str | None:
 
 
 def cmd_claude(args: list[str]) -> int:
+    from verp.debug import set_claude_version
     from verp.paths import CLAUDE_DIR, CONFIG_DIR, USER_CLAUDE_DIR
+
+    set_claude_version()
 
     settings = DATA_DIR / "claude-settings.json"
     add_dirs = ["--add-dir", str(CLAUDE_DIR)]
@@ -697,6 +701,10 @@ def cmd_claude(args: list[str]) -> int:
     _set_winsize(master_fd)
     signal.signal(signal.SIGWINCH, lambda _s, _f: _set_winsize(master_fd))
 
+    # Rolling buffer of recent PTY output for debug snapshots
+    _PTY_BUF_MAX = 2048
+    pty_output_buf = bytearray()
+
     # Ctrl+\ sequences: raw \x1c plus terminal-specific extended keyboard encodings
     _terminal = _terminal_info()
     jump_sequences: list[bytes] = [b"\x1c"]
@@ -724,6 +732,9 @@ def cmd_claude(args: list[str]) -> int:
                 if not data:
                     break
                 os.write(sys.stdout.fileno(), data)
+                pty_output_buf.extend(data)
+                if len(pty_output_buf) > _PTY_BUF_MAX:
+                    del pty_output_buf[:-_PTY_BUF_MAX]
             if sys.stdin in fds:
                 data = os.read(stdin_fd, 1024)
                 if b"\x03" in data:
@@ -754,7 +765,27 @@ def cmd_claude(args: list[str]) -> int:
                     break
             if listen_sock in fds:
                 conn, _ = listen_sock.accept()
-                handle_permission_request(conn, stdin_fd, master_fd)
+                cursor_before = _query_cursor_pos(stdin_fd)
+                result = handle_permission_request(conn, stdin_fd, master_fd)
+                cursor_after = _query_cursor_pos(stdin_fd)
+                if os.environ.get("VERP_DEBUG"):
+                    try:
+                        from verp.debug import build_snapshot, save_snapshot
+
+                        save_snapshot(
+                            build_snapshot(
+                                cursor_before=cursor_before,
+                                cursor_start=result.cursor_start,
+                                cursor_end=result.cursor_end,
+                                cursor_after=cursor_after,
+                                pty_buffer=bytes(pty_output_buf),
+                                tool=result.tool,
+                                directory=result.directory,
+                                decision=result.decision,
+                            )
+                        )
+                    except Exception:
+                        pass
     finally:
         termios.tcsetattr(stdin_fd, termios.TCSAFLUSH, old)
         os.close(master_fd)

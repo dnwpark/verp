@@ -1,6 +1,6 @@
 [project]
 name = "verp"
-version = "0.1.0"
+version = "0.20.0"
 description = "Project worktree manager"
 requires-python = ">=3.11"
 dependencies = ["argcomplete", "rich", "prompt_toolkit"]

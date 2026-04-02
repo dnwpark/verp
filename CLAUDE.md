@@ -21,6 +21,7 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
 - `src/verp/paths.py` — all path constants (`DATA_DIR`, `CLAUDE_DIR`, `CONFIG_DIR`, `USER_CLAUDE_DIR`)
 - `src/verp/claude_dir.py` — managed `CLAUDE_DIR` content versioning and sync
 - `src/verp/claude_permission_hook.py` — permission dialog and socket communication
+- `src/verp/debug.py` — permission dialog debug snapshot capture
 - `src/verp/status.py` — rich-formatted git status display
 - `src/verp/project.py` — project migration logic
 - `src/verp/_versions/` — versioned `track.sh` and `claude_settings.json` per schema version
@@ -43,7 +44,8 @@ All persistent state lives in `DATA_DIR` (`~/.local/share/verp/`):
 - `repos/` — central repo store (`REPO_DIR` in `git.py`); not bare — bare clones do not set up `refs/remotes/origin/HEAD`, which `primary_branch()` relies on
 - `track.sh` — hook handler deployed by migrations
 - `claude-settings.json` — Claude hook registration config
-- `monitor.pid` — singleton lock file for the agent monitor (`pid:tty` format)
+- `monitor.pid` — singleton lock file for the agent monitor (JSON `MonitorLock`)
+- `debug/` — permission dialog snapshots (`permission-<timestamp>.json`) for alignment debugging
 - `claude_dir/` — isolated directory passed to `verp claude` via `--add-dir`; contains `.claude/` with managed skills and CLAUDE.md (`CLAUDE_DIR` in `paths.py`)
 
 User-customizable Claude config lives in `CONFIG_DIR` (`~/.config/verp/`):

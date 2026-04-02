@@ -8,13 +8,45 @@ import sys
 import termios
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Literal, cast
 
 from verp.db import reset_agent_tool, set_agent_status, set_agent_tool
 
 
+def _query_cursor_pos(stdin_fd: int) -> tuple[int, int] | None:
+    """Query cursor position via DSR escape. Returns (row, col) or None."""
+    import re
+
+    os.write(sys.stdout.fileno(), b"\x1b[6n")
+    r, _, _ = select.select([stdin_fd], [], [], 0.2)
+    if not r:
+        return None
+    response = os.read(stdin_fd, 32)
+    m = re.search(rb"\x1b\[(\d+);(\d+)R", response)
+    if m:
+        return (int(m.group(1)), int(m.group(2)))
+    return None
+
+
+@dataclass(frozen=True)
+class _DialogResult:
+    decision: "PermissionDecision"
+    cursor_start: tuple[int, int] | None  # after erasing Claude's dialog
+    cursor_end: tuple[int, int] | None  # after erasing verp's dialog
+
+
+@dataclass(frozen=True)
+class PermissionResult:
+    tool: str
+    directory: str
+    decision: Literal["allow", "deny"]
+    cursor_start: tuple[int, int] | None
+    cursor_end: tuple[int, int] | None
+
+
 @dataclass
 class PermissionDecision:
-    behavior: str  # "allow" or "deny"
+    behavior: Literal["allow", "deny"]
     updated_input: dict[str, str] | None = (
         None  # allow only: modifies tool input
     )
@@ -131,7 +163,7 @@ def _show_permission_dialog(
     permission_suggestions: list[dict[str, object]],
     session_id: str = "",
     directory: str = "",
-) -> PermissionDecision:
+) -> _DialogResult:
     stdout_fd = sys.stdout.fileno()
 
     try:
@@ -154,6 +186,7 @@ def _show_permission_dialog(
     )
     n = _claude_dialog_lines(tool, tool_input)
     os.write(stdout_fd, f"\x1b[{n}A\r\x1b[J".encode())
+    cursor_start = _query_cursor_pos(stdin_fd)
     os.write(
         stdout_fd, f"\r\n \x1b[1m{question_terminal}\x1b[0m\r\n\r\n".encode()
     )
@@ -220,7 +253,12 @@ def _show_permission_dialog(
             r, _, _ = select.select([stdin_fd], [], [], 0.05)
             if not r:
                 _clear_dialog()
-                return PermissionDecision("deny", interrupt=True)
+                cursor_end = _query_cursor_pos(stdin_fd)
+                return _DialogResult(
+                    PermissionDecision("deny", interrupt=True),
+                    cursor_start,
+                    cursor_end,
+                )
             in_escape = True
             continue
         if ch == b"\x1c":
@@ -241,19 +279,25 @@ def _show_permission_dialog(
             break
 
     _clear_dialog()
+    cursor_end = _query_cursor_pos(stdin_fd)
     if selected == 1:
-        return PermissionDecision(
-            "allow",
-            updated_permissions=permission_suggestions or None,
+        return _DialogResult(
+            PermissionDecision(
+                "allow", updated_permissions=permission_suggestions or None
+            ),
+            cursor_start,
+            cursor_end,
         )
     if selected == 2:
-        return PermissionDecision("deny", interrupt=True)
-    return PermissionDecision("allow")
+        return _DialogResult(
+            PermissionDecision("deny", interrupt=True), cursor_start, cursor_end
+        )
+    return _DialogResult(PermissionDecision("allow"), cursor_start, cursor_end)
 
 
 def handle_permission_request(
     conn: socket.socket, stdin_fd: int, master_fd: int
-) -> None:
+) -> PermissionResult:
     try:
         chunks = []
         while chunk := conn.recv(4096):
@@ -267,14 +311,20 @@ def handle_permission_request(
         except BrokenPipeError:
             pass
         conn.close()
-        return
+        return PermissionResult(
+            tool="unknown",
+            directory="",
+            decision="deny",
+            cursor_start=None,
+            cursor_end=None,
+        )
 
     tool = req.get("tool", "unknown")
     tool_input = req.get("input", {})
     permission_suggestions = req.get("permission_suggestions", [])
     session_id = req.get("session_id", "")
     directory = req.get("directory", "")
-    decision = _show_permission_dialog(
+    dialog = _show_permission_dialog(
         tool,
         tool_input,
         stdin_fd,
@@ -282,6 +332,7 @@ def handle_permission_request(
         session_id,
         directory,
     )
+    decision = dialog.decision
     if decision.interrupt:
         import time
 
@@ -295,6 +346,13 @@ def handle_permission_request(
     except BrokenPipeError:
         pass
     conn.close()
+    return PermissionResult(
+        tool=tool,
+        directory=directory,
+        decision=decision.behavior,
+        cursor_start=dialog.cursor_start,
+        cursor_end=dialog.cursor_end,
+    )
 
 
 def cmd_internal_hook_permission_request(
