@@ -10,7 +10,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal, cast
 
-from verp.db import reset_agent_tool, set_agent_status, set_agent_tool
+from verp.db import (
+    AgentStatus,
+    reset_agent_tool,
+    set_agent_status,
+    set_agent_tool,
+)
 
 
 def _query_cursor_pos(stdin_fd: int) -> tuple[int, int] | None:
@@ -218,7 +223,7 @@ def _show_permission_dialog(
                 set_agent_status(
                     session_id,
                     directory,
-                    "waiting_permission",
+                    AgentStatus.WAITING_PERMISSION,
                     int(time.time() * 1000),
                 )
             continue
@@ -337,7 +342,10 @@ def handle_permission_request(
         import time
 
         set_agent_status(
-            session_id, directory, "waiting_prompt", int(time.time() * 1000)
+            session_id,
+            directory,
+            AgentStatus.WAITING_PROMPT,
+            int(time.time() * 1000),
         )
         reset_agent_tool(session_id)
         os.write(master_fd, b"\x03")
@@ -359,11 +367,15 @@ def cmd_internal_hook_permission_request(
     session_id: str, directory: str, tool: str, timestamp: int
 ) -> int:
     if tool == "AskUserQuestion":
-        set_agent_status(session_id, directory, "asking_question", timestamp)
+        set_agent_status(
+            session_id, directory, AgentStatus.ASKING_QUESTION, timestamp
+        )
         return 0
 
     if directory:
-        set_agent_status(session_id, directory, "waiting_permission", timestamp)
+        set_agent_status(
+            session_id, directory, AgentStatus.WAITING_PERMISSION, timestamp
+        )
         set_agent_tool(session_id, tool)
 
     sock_path = os.environ.get("VERP_SOCKET")
@@ -409,7 +421,7 @@ def cmd_internal_hook_permission_request(
         import time
 
         set_agent_status(
-            session_id, directory, "working", int(time.time() * 1000)
+            session_id, directory, AgentStatus.WORKING, int(time.time() * 1000)
         )
 
     decision_obj: dict[str, object] = {"behavior": decision.behavior}

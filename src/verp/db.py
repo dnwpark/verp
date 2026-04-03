@@ -4,10 +4,19 @@ import sqlite3
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from verp.paths import DATA_DIR
+
+
+class AgentStatus(StrEnum):
+    WORKING = "working"
+    WAITING_PROMPT = "waiting_prompt"
+    WAITING_PERMISSION = "waiting_permission"
+    ASKING_QUESTION = "asking_question"
+    PAUSED = "paused"
 
 
 @dataclass
@@ -29,7 +38,7 @@ class TerminalInfo:
 class AgentInfo:
     session_id: str
     directory: str
-    status: str
+    status: AgentStatus
     tool: str | None
     updated_at: int
     verp_pid: int | None = None
@@ -420,7 +429,7 @@ def _terminal_info() -> TerminalInfo | None:
 
 
 def set_agent_status(
-    session_id: str, directory: str, status: str, timestamp: int
+    session_id: str, directory: str, status: AgentStatus, timestamp: int
 ) -> None:
     """Create agent if needed and set status. Uses timestamp guard."""
     pid = _verp_pid()
@@ -449,7 +458,7 @@ def set_agent_status(
             )
 
 
-def set_agent_status_by_session(session_id: str, status: str) -> None:
+def set_agent_status_by_session(session_id: str, status: AgentStatus) -> None:
     """Directly set an agent's status by session ID (for manual status changes)."""
     with _db() as conn:
         with conn:
@@ -495,7 +504,9 @@ def remove_agents_by_pid(pid: int) -> None:
             conn.execute("DELETE FROM sessions WHERE verp_pid = ?", (pid,))
 
 
-def set_agents_status_by_pid(pid: int, status: str, timestamp: int) -> None:
+def set_agents_status_by_pid(
+    pid: int, status: AgentStatus, timestamp: int
+) -> None:
     with _db() as conn:
         with conn:
             conn.execute(
@@ -574,7 +585,7 @@ def get_all_agents() -> list[AgentInfo]:
         AgentInfo(
             session_id=str(row["session_id"]),
             directory=str(row["directory"]),
-            status=str(row["status"]),
+            status=AgentStatus(str(row["status"])),
             tool=str(row["tool"]) if row["tool"] is not None else None,
             updated_at=int(row["updated_at"]),
             verp_pid=(
@@ -601,7 +612,7 @@ def get_agent_by_prefix(prefix: str) -> AgentInfo | None:
     return AgentInfo(
         session_id=str(row["session_id"]),
         directory=str(row["directory"]),
-        status=str(row["status"]),
+        status=AgentStatus(str(row["status"])),
         tool=str(row["tool"]) if row["tool"] is not None else None,
         updated_at=int(row["updated_at"]),
         verp_pid=int(row["verp_pid"]) if row["verp_pid"] is not None else None,

@@ -25,6 +25,7 @@ from pathlib import Path
 
 from verp.paths import DATA_DIR
 from verp.db import (
+    AgentStatus,
     SCHEMA_VERSION,
     ProjectInfo,
     add_project,
@@ -531,11 +532,11 @@ def _build_agent_table() -> Table:
         table.add_row("[grey70]no agents[/grey70]", "", "", "")
     for agent in agents:
         sid = agent.session_id[:8]
-        if agent.status == "working":
+        if agent.status == AgentStatus.WORKING:
             color = "green"
-        elif agent.status == "waiting_prompt":
+        elif agent.status == AgentStatus.WAITING_PROMPT:
             color = "yellow"
-        elif agent.status == "paused":
+        elif agent.status == AgentStatus.PAUSED:
             color = "grey70"
         else:
             color = "dark_orange"
@@ -606,7 +607,7 @@ def cmd_internal_hook_pre_tool_use(
 ) -> int:
     if not directory:
         return 0
-    set_agent_status(session_id, directory, "working", timestamp)
+    set_agent_status(session_id, directory, AgentStatus.WORKING, timestamp)
     set_agent_tool(session_id, tool)
     return 0
 
@@ -616,7 +617,7 @@ def cmd_internal_hook_post_tool_use(
 ) -> int:
     if not directory:
         return 0
-    set_agent_status(session_id, directory, "working", timestamp)
+    set_agent_status(session_id, directory, AgentStatus.WORKING, timestamp)
     reset_agent_tool(session_id)
     return 0
 
@@ -626,7 +627,9 @@ def cmd_internal_hook_post_tool_use_failure(
 ) -> int:
     if not directory:
         return 0
-    set_agent_status(session_id, directory, "waiting_prompt", timestamp)
+    set_agent_status(
+        session_id, directory, AgentStatus.WAITING_PROMPT, timestamp
+    )
     reset_agent_tool(session_id)
     return 0
 
@@ -636,7 +639,7 @@ def cmd_internal_hook_user_prompt_submit(
 ) -> int:
     if not directory:
         return 0
-    set_agent_status(session_id, directory, "working", timestamp)
+    set_agent_status(session_id, directory, AgentStatus.WORKING, timestamp)
     return 0
 
 
@@ -645,7 +648,9 @@ def cmd_internal_hook_stop(
 ) -> int:
     if not directory:
         return 0
-    set_agent_status(session_id, directory, "waiting_prompt", timestamp)
+    set_agent_status(
+        session_id, directory, AgentStatus.WAITING_PROMPT, timestamp
+    )
     return 0
 
 
@@ -741,7 +746,9 @@ def cmd_claude(args: list[str]) -> int:
                 data = os.read(stdin_fd, 1024)
                 if b"\x03" in data:
                     set_agents_status_by_pid(
-                        os.getpid(), "waiting_prompt", int(time.time() * 1000)
+                        os.getpid(),
+                        AgentStatus.WAITING_PROMPT,
+                        int(time.time() * 1000),
                     )
                 if any(seq in data for seq in jump_sequences):
                     from verp.monitor import focus_existing_monitor
@@ -754,7 +761,7 @@ def cmd_claude(args: list[str]) -> int:
                             set_agent_status(
                                 session_id,
                                 os.getcwd(),
-                                "waiting_prompt",
+                                AgentStatus.WAITING_PROMPT,
                                 int(time.time() * 1000),
                             )
                     for seq in jump_sequences:

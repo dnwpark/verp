@@ -15,6 +15,7 @@ from verp.agent import format_age
 from verp.paths import DATA_DIR
 from verp.db import (
     AgentInfo,
+    AgentStatus,
     TerminalInfo,
     clear_agent_by_prefix,
     get_all_agents,
@@ -75,11 +76,11 @@ def focus_existing_monitor() -> bool:
 
 
 _STATUS_STYLE = {
-    "working": "fg:ansigreen",
-    "waiting_prompt": "fg:ansiyellow",
-    "asking_question": "fg:#ff8700",
-    "waiting_permission": "fg:#ff8700",
-    "paused": "fg:grey",
+    AgentStatus.WORKING: "fg:ansigreen",
+    AgentStatus.WAITING_PROMPT: "fg:ansiyellow",
+    AgentStatus.ASKING_QUESTION: "fg:#ff8700",
+    AgentStatus.WAITING_PERMISSION: "fg:#ff8700",
+    AgentStatus.PAUSED: "fg:grey",
 }
 
 
@@ -231,7 +232,11 @@ class AgentMonitor:
         if self._selected is None or self._selected >= len(self._agents):
             return
         agent = self._agents[self._selected]
-        new_status = "waiting_prompt" if agent.status == "paused" else "paused"
+        new_status = (
+            AgentStatus.WAITING_PROMPT
+            if agent.status == AgentStatus.PAUSED
+            else AgentStatus.PAUSED
+        )
         set_agent_status_by_session(agent.session_id, new_status)
 
     def _focus_selected(self) -> None:
