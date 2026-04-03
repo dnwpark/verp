@@ -1,7 +1,8 @@
 import json
 import shutil
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -43,12 +44,21 @@ def _db_path(data_dir: Path) -> Path:
     return data_dir / "verp.db"
 
 
-def _db(data_dir: Path = DATA_DIR) -> sqlite3.Connection:
+def _make_connection(data_dir: Path) -> sqlite3.Connection:
     data_dir.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(_db_path(data_dir))
     conn.execute("PRAGMA foreign_keys = ON")
     conn.row_factory = sqlite3.Row
     return conn
+
+
+@contextmanager
+def _db(data_dir: Path = DATA_DIR) -> Generator[sqlite3.Connection, None, None]:
+    conn = _make_connection(data_dir)
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def _migrate_to_v1(conn: sqlite3.Connection, data_dir: Path) -> None:
@@ -210,7 +220,7 @@ def set_config_value(conn: sqlite3.Connection, key: str, version: int) -> None:
 
 
 def init_db(data_dir: Path) -> sqlite3.Connection:
-    conn = _db(data_dir)
+    conn = _make_connection(data_dir)
     current = conn.execute("PRAGMA user_version").fetchone()[0]
     if current < SCHEMA_VERSION:
         for version in range(current + 1, SCHEMA_VERSION + 1):
@@ -226,34 +236,31 @@ def init_db(data_dir: Path) -> sqlite3.Connection:
 def project_exists(name: str) -> bool:
     if not _db_path(DATA_DIR).exists():
         return False
-    conn = _db()
-    row = conn.execute(
-        "SELECT 1 FROM projects WHERE name = ?", (name,)
-    ).fetchone()
-    conn.close()
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM projects WHERE name = ?", (name,)
+        ).fetchone()
     return row is not None
 
 
 def get_project(name: str) -> ProjectInfo | None:
     if not _db_path(DATA_DIR).exists():
         return None
-    conn = _db()
-    row = conn.execute(
-        "SELECT name, path, branch, version FROM projects WHERE name = ?",
-        (name,),
-    ).fetchone()
-    if row is None:
-        conn.close()
-        return None
-    repos = [
-        str(r[0])
-        for r in conn.execute(
-            "SELECT repo FROM project_repos"
-            " WHERE project_name = ? ORDER BY rowid",
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT name, path, branch, version FROM projects WHERE name = ?",
             (name,),
-        ).fetchall()
-    ]
-    conn.close()
+        ).fetchone()
+        if row is None:
+            return None
+        repos = [
+            str(r[0])
+            for r in conn.execute(
+                "SELECT repo FROM project_repos"
+                " WHERE project_name = ? ORDER BY rowid",
+                (name,),
+            ).fetchall()
+        ]
     return ProjectInfo(
         name=str(row["name"]),
         path=str(row["path"]),
@@ -264,137 +271,128 @@ def get_project(name: str) -> ProjectInfo | None:
 
 
 def add_project(name: str, project_info: ProjectInfo) -> None:
-    conn = _db()
-    with conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO projects (name, path, branch, version) VALUES (?, ?, ?, ?)",
-            (
-                name,
-                project_info.path,
-                project_info.branch,
-                project_info.version,
-            ),
-        )
-        conn.execute(
-            "DELETE FROM project_repos WHERE project_name = ?", (name,)
-        )
-        for repo in project_info.repos:
+    with _db() as conn:
+        with conn:
             conn.execute(
-                "INSERT INTO project_repos (project_name, repo) VALUES (?, ?)",
-                (name, repo),
+                "INSERT OR REPLACE INTO projects (name, path, branch, version) VALUES (?, ?, ?, ?)",
+                (
+                    name,
+                    project_info.path,
+                    project_info.branch,
+                    project_info.version,
+                ),
             )
-    conn.close()
+            conn.execute(
+                "DELETE FROM project_repos WHERE project_name = ?", (name,)
+            )
+            for repo in project_info.repos:
+                conn.execute(
+                    "INSERT INTO project_repos (project_name, repo) VALUES (?, ?)",
+                    (name, repo),
+                )
 
 
 def set_project_version(name: str, version: int) -> None:
-    conn = _db()
-    with conn:
-        conn.execute(
-            "UPDATE projects SET version = ? WHERE name = ?", (version, name)
-        )
-    conn.close()
+    with _db() as conn:
+        with conn:
+            conn.execute(
+                "UPDATE projects SET version = ? WHERE name = ?",
+                (version, name),
+            )
 
 
 def delete_project(name: str) -> None:
-    conn = _db()
-    with conn:
-        conn.execute("DELETE FROM projects WHERE name = ?", (name,))
-    conn.close()
+    with _db() as conn:
+        with conn:
+            conn.execute("DELETE FROM projects WHERE name = ?", (name,))
 
 
 def all_project_infos() -> list[ProjectInfo]:
     if not _db_path(DATA_DIR).exists():
         return []
-    conn = _db()
-    rows = conn.execute(
-        "SELECT name, path, branch, version FROM projects ORDER BY name"
-    ).fetchall()
-    result = []
-    for row in rows:
-        repos = [
-            str(r[0])
-            for r in conn.execute(
-                "SELECT repo FROM project_repos"
-                " WHERE project_name = ? ORDER BY rowid",
-                (row["name"],),
-            ).fetchall()
-        ]
-        result.append(
-            ProjectInfo(
-                name=str(row["name"]),
-                path=str(row["path"]),
-                branch=str(row["branch"]),
-                repos=repos,
-                version=int(row["version"]),
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT name, path, branch, version FROM projects ORDER BY name"
+        ).fetchall()
+        result = []
+        for row in rows:
+            repos = [
+                str(r[0])
+                for r in conn.execute(
+                    "SELECT repo FROM project_repos"
+                    " WHERE project_name = ? ORDER BY rowid",
+                    (row["name"],),
+                ).fetchall()
+            ]
+            result.append(
+                ProjectInfo(
+                    name=str(row["name"]),
+                    path=str(row["path"]),
+                    branch=str(row["branch"]),
+                    repos=repos,
+                    version=int(row["version"]),
+                )
             )
-        )
-    conn.close()
     return result
 
 
 def get_project_branch(name: str) -> str | None:
     if not _db_path(DATA_DIR).exists():
         return None
-    conn = _db()
-    row = conn.execute(
-        "SELECT branch FROM projects WHERE name = ?", (name,)
-    ).fetchone()
-    conn.close()
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT branch FROM projects WHERE name = ?", (name,)
+        ).fetchone()
     return str(row["branch"]) if row is not None else None
 
 
 def is_repo_in_project(project_name: str, repo: str) -> bool:
     if not _db_path(DATA_DIR).exists():
         return False
-    conn = _db()
-    row = conn.execute(
-        "SELECT 1 FROM project_repos WHERE project_name = ? AND repo = ?",
-        (project_name, repo),
-    ).fetchone()
-    conn.close()
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM project_repos WHERE project_name = ? AND repo = ?",
+            (project_name, repo),
+        ).fetchone()
     return row is not None
 
 
 def projects_using_repo(repo: str) -> list[str]:
     if not _db_path(DATA_DIR).exists():
         return []
-    conn = _db()
-    rows = conn.execute(
-        "SELECT project_name FROM project_repos WHERE repo = ? ORDER BY project_name",
-        (repo,),
-    ).fetchall()
-    conn.close()
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT project_name FROM project_repos WHERE repo = ? ORDER BY project_name",
+            (repo,),
+        ).fetchall()
     return [str(row["project_name"]) for row in rows]
 
 
 def add_repo_to_project(project_name: str, repo: str) -> None:
-    conn = _db()
-    with conn:
-        conn.execute(
-            "INSERT INTO project_repos (project_name, repo) VALUES (?, ?)",
-            (project_name, repo),
-        )
-    conn.close()
+    with _db() as conn:
+        with conn:
+            conn.execute(
+                "INSERT INTO project_repos (project_name, repo) VALUES (?, ?)",
+                (project_name, repo),
+            )
 
 
 def remove_repo_from_project(project_name: str, repo: str) -> None:
-    conn = _db()
-    with conn:
-        conn.execute(
-            "DELETE FROM project_repos WHERE project_name = ? AND repo = ?",
-            (project_name, repo),
-        )
-    conn.close()
+    with _db() as conn:
+        with conn:
+            conn.execute(
+                "DELETE FROM project_repos WHERE project_name = ? AND repo = ?",
+                (project_name, repo),
+            )
 
 
 def is_project_dir(path: Path) -> bool:
     if not _db_path(DATA_DIR).exists():
         return False
-    conn = _db()
-    row = conn.execute(
-        "SELECT 1 FROM projects WHERE path = ?", (str(path.resolve()),)
-    ).fetchone()
-    conn.close()
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM projects WHERE path = ?", (str(path.resolve()),)
+        ).fetchone()
     return row is not None
 
 
@@ -430,131 +428,123 @@ def set_agent_status(
     terminal = _terminal_info()
     terminal_app = terminal.app if terminal else None
     terminal_data = json.dumps(terminal.data) if terminal else None
-    conn = _db()
-    with conn:
-        conn.execute(
-            "INSERT INTO agents"
-            " (session_id, directory, status, tool, updated_at, verp_pid, terminal_app, terminal_data)"
-            " VALUES (?, ?, ?, NULL, ?, ?, ?, ?)"
-            " ON CONFLICT(session_id) DO UPDATE SET"
-            "     status = excluded.status,"
-            "     updated_at = excluded.updated_at"
-            " WHERE excluded.updated_at >= agents.updated_at",
-            (
-                session_id,
-                directory,
-                status,
-                timestamp,
-                pid,
-                terminal_app,
-                terminal_data,
-            ),
-        )
-    conn.close()
+    with _db() as conn:
+        with conn:
+            conn.execute(
+                "INSERT INTO agents"
+                " (session_id, directory, status, tool, updated_at, verp_pid, terminal_app, terminal_data)"
+                " VALUES (?, ?, ?, NULL, ?, ?, ?, ?)"
+                " ON CONFLICT(session_id) DO UPDATE SET"
+                "     status = excluded.status,"
+                "     updated_at = excluded.updated_at"
+                " WHERE excluded.updated_at >= agents.updated_at",
+                (
+                    session_id,
+                    directory,
+                    status,
+                    timestamp,
+                    pid,
+                    terminal_app,
+                    terminal_data,
+                ),
+            )
 
 
 def set_agent_status_by_session(session_id: str, status: str) -> None:
     """Directly set an agent's status by session ID (for manual status changes)."""
-    conn = _db()
-    with conn:
-        conn.execute(
-            "UPDATE agents SET status = ? WHERE session_id = ?",
-            (status, session_id),
-        )
-    conn.close()
+    with _db() as conn:
+        with conn:
+            conn.execute(
+                "UPDATE agents SET status = ? WHERE session_id = ?",
+                (status, session_id),
+            )
 
 
 def has_agent_by_verp_pid(verp_pid: int) -> bool:
     if not _db_path(DATA_DIR).exists():
         return False
-    conn = _db()
-    row = conn.execute(
-        "SELECT 1 FROM agents WHERE verp_pid = ?", (verp_pid,)
-    ).fetchone()
-    conn.close()
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM agents WHERE verp_pid = ?", (verp_pid,)
+        ).fetchone()
     return row is not None
 
 
 def register_session(verp_pid: int, session_id: str) -> None:
-    conn = _db()
-    with conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO sessions (verp_pid, session_id) VALUES (?, ?)",
-            (verp_pid, session_id),
-        )
-    conn.close()
+    with _db() as conn:
+        with conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO sessions (verp_pid, session_id) VALUES (?, ?)",
+                (verp_pid, session_id),
+            )
 
 
 def get_session_id(verp_pid: int) -> str | None:
     if not _db_path(DATA_DIR).exists():
         return None
-    conn = _db()
-    row = conn.execute(
-        "SELECT session_id FROM sessions WHERE verp_pid = ?", (verp_pid,)
-    ).fetchone()
-    conn.close()
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT session_id FROM sessions WHERE verp_pid = ?", (verp_pid,)
+        ).fetchone()
     return str(row["session_id"]) if row is not None else None
 
 
 def remove_agents_by_pid(pid: int) -> None:
-    conn = _db()
-    with conn:
-        conn.execute("DELETE FROM agents WHERE verp_pid = ?", (pid,))
-        conn.execute("DELETE FROM sessions WHERE verp_pid = ?", (pid,))
-    conn.close()
+    with _db() as conn:
+        with conn:
+            conn.execute("DELETE FROM agents WHERE verp_pid = ?", (pid,))
+            conn.execute("DELETE FROM sessions WHERE verp_pid = ?", (pid,))
 
 
 def set_agents_status_by_pid(pid: int, status: str, timestamp: int) -> None:
-    conn = _db()
-    with conn:
-        conn.execute(
-            "UPDATE agents SET status = ?, updated_at = ? WHERE verp_pid = ?",
-            (status, timestamp, pid),
-        )
-    conn.close()
+    with _db() as conn:
+        with conn:
+            conn.execute(
+                "UPDATE agents SET status = ?, updated_at = ? WHERE verp_pid = ?",
+                (status, timestamp, pid),
+            )
 
 
 def set_agent_tool(session_id: str, tool: str) -> None:
     """Set tool on an existing agent."""
-    conn = _db()
-    with conn:
-        conn.execute(
-            "UPDATE agents SET tool = ? WHERE session_id = ?",
-            (tool, session_id),
-        )
-    conn.close()
+    with _db() as conn:
+        with conn:
+            conn.execute(
+                "UPDATE agents SET tool = ? WHERE session_id = ?",
+                (tool, session_id),
+            )
 
 
 def reset_agent_tool(session_id: str) -> None:
     """Clear tool on an existing agent."""
-    conn = _db()
-    with conn:
-        conn.execute(
-            "UPDATE agents SET tool = NULL WHERE session_id = ?", (session_id,)
-        )
-    conn.close()
+    with _db() as conn:
+        with conn:
+            conn.execute(
+                "UPDATE agents SET tool = NULL WHERE session_id = ?",
+                (session_id,),
+            )
 
 
 def remove_agent(session_id: str) -> None:
-    conn = _db()
-    with conn:
-        conn.execute("DELETE FROM agents WHERE session_id = ?", (session_id,))
-    conn.close()
+    with _db() as conn:
+        with conn:
+            conn.execute(
+                "DELETE FROM agents WHERE session_id = ?", (session_id,)
+            )
 
 
 def clear_agent_by_prefix(prefix: str) -> bool:
-    conn = _db()
-    row = conn.execute(
-        "SELECT session_id FROM agents WHERE session_id LIKE ?", (prefix + "%",)
-    ).fetchone()
-    if row is None:
-        conn.close()
-        return False
-    with conn:
-        conn.execute(
-            "DELETE FROM agents WHERE session_id = ?", (row["session_id"],)
-        )
-    conn.close()
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT session_id FROM agents WHERE session_id LIKE ?",
+            (prefix + "%",),
+        ).fetchone()
+        if row is None:
+            return False
+        with conn:
+            conn.execute(
+                "DELETE FROM agents WHERE session_id = ?", (row["session_id"],)
+            )
     return True
 
 
@@ -575,13 +565,12 @@ def _terminal_from_row(row: sqlite3.Row) -> TerminalInfo | None:
 def get_all_agents() -> list[AgentInfo]:
     if not _db_path(DATA_DIR).exists():
         return []
-    conn = _db()
-    rows = conn.execute(
-        "SELECT session_id, directory, status, tool, updated_at, verp_pid,"
-        "       terminal_app, terminal_data"
-        " FROM agents ORDER BY updated_at DESC"
-    ).fetchall()
-    conn.close()
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT session_id, directory, status, tool, updated_at, verp_pid,"
+            "       terminal_app, terminal_data"
+            " FROM agents ORDER BY updated_at DESC"
+        ).fetchall()
     return [
         AgentInfo(
             session_id=str(row["session_id"]),
@@ -601,14 +590,13 @@ def get_all_agents() -> list[AgentInfo]:
 def get_agent_by_prefix(prefix: str) -> AgentInfo | None:
     if not _db_path(DATA_DIR).exists():
         return None
-    conn = _db()
-    row = conn.execute(
-        "SELECT session_id, directory, status, tool, updated_at, verp_pid,"
-        "       terminal_app, terminal_data"
-        " FROM agents WHERE session_id LIKE ?",
-        (prefix + "%",),
-    ).fetchone()
-    conn.close()
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT session_id, directory, status, tool, updated_at, verp_pid,"
+            "       terminal_app, terminal_data"
+            " FROM agents WHERE session_id LIKE ?",
+            (prefix + "%",),
+        ).fetchone()
     if row is None:
         return None
     return AgentInfo(
