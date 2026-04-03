@@ -685,7 +685,9 @@ def cmd_claude(args: list[str]) -> int:
         + args
     )
 
-    sock_path = f"/tmp/verp-{os.getpid()}.sock"
+    from verp.paths import verp_sock_path
+
+    sock_path = verp_sock_path(os.getpid())
     os.environ["VERP_SOCKET"] = sock_path
     listen_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listen_sock.bind(sock_path)

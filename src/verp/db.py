@@ -399,13 +399,12 @@ def is_project_dir(path: Path) -> bool:
 def _verp_pid() -> int | None:
     import os
 
+    from verp.paths import verp_sock_pid
+
     sock = os.environ.get("VERP_SOCKET", "")
     if not sock:
         return None
-    try:
-        return int(sock.rsplit("-", 1)[-1].removesuffix(".sock"))
-    except ValueError:
-        return None
+    return verp_sock_pid(sock)
 
 
 def _terminal_info() -> TerminalInfo | None:
