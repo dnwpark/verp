@@ -667,11 +667,8 @@ def get_project_system_prompt() -> str | None:
     )
 
 
-def cmd_claude(args: list[str]) -> int:
-    from verp.debug import set_claude_version
+def _build_claude_cmd(args: list[str]) -> list[str]:
     from verp.paths import CLAUDE_DIR, CONFIG_DIR, USER_CLAUDE_DIR
-
-    set_claude_version()
 
     settings = DATA_DIR / "claude-settings.json"
     add_dirs = ["--add-dir", str(CLAUDE_DIR)]
@@ -681,13 +678,15 @@ def cmd_claude(args: list[str]) -> int:
     append_system = (
         ["--append-system-prompt", system_prompt] if system_prompt else []
     )
-    cmd = (
+    return (
         ["claude", "--settings", str(settings)]
         + add_dirs
         + append_system
         + args
     )
 
+
+def _setup_socket() -> tuple[str, socket.socket]:
     from verp.paths import verp_sock_path
 
     sock_path = verp_sock_path(os.getpid())
@@ -695,30 +694,85 @@ def cmd_claude(args: list[str]) -> int:
     listen_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listen_sock.bind(sock_path)
     listen_sock.listen(1)
+    return sock_path, listen_sock
 
-    pid, master_fd = pty.fork()
-    if pid == 0:
-        listen_sock.close()
-        env = os.environ.copy()
-        env["CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD"] = "1"
-        os.execvpe(cmd[0], cmd, env)
 
-    _set_winsize(master_fd)
-    signal.signal(signal.SIGWINCH, lambda _s, _f: _set_winsize(master_fd))
+def _build_jump_sequences() -> list[bytes]:
+    sequences: list[bytes] = [b"\x1c"]
+    terminal = _terminal_info()
+    if terminal and terminal.app == "kitty":
+        sequences.append(b"\x1b[92;5u")
+    elif terminal and terminal.app == "iTerm.app":
+        sequences.append(b"\x1b[27;5;92~")
+    return sequences
 
-    # Rolling buffer of recent PTY output for debug snapshots
+
+def _handle_stdin(
+    data: bytes,
+    jump_sequences: list[bytes],
+    master_fd: int,
+) -> bytes:
+    if b"\x03" in data:
+        set_agents_status_by_pid(
+            os.getpid(), AgentStatus.WAITING_PROMPT, now_ms()
+        )
+    if any(seq in data for seq in jump_sequences):
+        from verp.monitor import focus_existing_monitor
+
+        focus_existing_monitor()
+        pid = os.getpid()
+        if not has_agent_by_verp_pid(pid):
+            session_id = get_session_id(pid)
+            if session_id:
+                set_agent_status(
+                    session_id,
+                    os.getcwd(),
+                    AgentStatus.WAITING_PROMPT,
+                    now_ms(),
+                )
+        for seq in jump_sequences:
+            data = data.replace(seq, b"")
+    return data
+
+
+def _handle_permission(
+    conn: socket.socket,
+    stdin_fd: int,
+    master_fd: int,
+    pty_output_buf: bytearray,
+) -> None:
+    cursor_before = _query_cursor_pos(stdin_fd)
+    result = handle_permission_request(conn, stdin_fd, master_fd)
+    cursor_after = _query_cursor_pos(stdin_fd)
+    if os.environ.get("VERP_DEBUG"):
+        try:
+            from verp.debug import build_snapshot, save_snapshot
+
+            save_snapshot(
+                build_snapshot(
+                    cursor_before=cursor_before,
+                    cursor_start=result.cursor_start,
+                    cursor_end=result.cursor_end,
+                    cursor_after=cursor_after,
+                    pty_buffer=bytes(pty_output_buf),
+                    tool=result.tool,
+                    directory=result.directory,
+                    decision=result.decision,
+                )
+            )
+        except Exception:
+            pass
+
+
+def _pty_loop(
+    master_fd: int,
+    stdin_fd: int,
+    listen_sock: socket.socket,
+    jump_sequences: list[bytes],
+) -> None:
     _PTY_BUF_MAX = 2048
     pty_output_buf = bytearray()
 
-    # Ctrl+\ sequences: raw \x1c plus terminal-specific extended keyboard encodings
-    _terminal = _terminal_info()
-    jump_sequences: list[bytes] = [b"\x1c"]
-    if _terminal and _terminal.app == "kitty":
-        jump_sequences.append(b"\x1b[92;5u")
-    elif _terminal and _terminal.app == "iTerm.app":
-        jump_sequences.append(b"\x1b[27;5;92~")
-
-    stdin_fd = sys.stdin.fileno()
     old = termios.tcgetattr(stdin_fd)
     tty.setraw(stdin_fd)
     try:
@@ -742,28 +796,7 @@ def cmd_claude(args: list[str]) -> int:
                     del pty_output_buf[:-_PTY_BUF_MAX]
             if sys.stdin in fds:
                 data = os.read(stdin_fd, 1024)
-                if b"\x03" in data:
-                    set_agents_status_by_pid(
-                        os.getpid(),
-                        AgentStatus.WAITING_PROMPT,
-                        now_ms(),
-                    )
-                if any(seq in data for seq in jump_sequences):
-                    from verp.monitor import focus_existing_monitor
-
-                    focus_existing_monitor()
-                    pid = os.getpid()
-                    if not has_agent_by_verp_pid(pid):
-                        session_id = get_session_id(pid)
-                        if session_id:
-                            set_agent_status(
-                                session_id,
-                                os.getcwd(),
-                                AgentStatus.WAITING_PROMPT,
-                                now_ms(),
-                            )
-                    for seq in jump_sequences:
-                        data = data.replace(seq, b"")
+                data = _handle_stdin(data, jump_sequences, master_fd)
                 if not data:
                     continue
                 try:
@@ -772,29 +805,33 @@ def cmd_claude(args: list[str]) -> int:
                     break
             if listen_sock in fds:
                 conn, _ = listen_sock.accept()
-                cursor_before = _query_cursor_pos(stdin_fd)
-                result = handle_permission_request(conn, stdin_fd, master_fd)
-                cursor_after = _query_cursor_pos(stdin_fd)
-                if os.environ.get("VERP_DEBUG"):
-                    try:
-                        from verp.debug import build_snapshot, save_snapshot
-
-                        save_snapshot(
-                            build_snapshot(
-                                cursor_before=cursor_before,
-                                cursor_start=result.cursor_start,
-                                cursor_end=result.cursor_end,
-                                cursor_after=cursor_after,
-                                pty_buffer=bytes(pty_output_buf),
-                                tool=result.tool,
-                                directory=result.directory,
-                                decision=result.decision,
-                            )
-                        )
-                    except Exception:
-                        pass
+                _handle_permission(conn, stdin_fd, master_fd, pty_output_buf)
     finally:
         termios.tcsetattr(stdin_fd, termios.TCSAFLUSH, old)
+
+
+def cmd_claude(args: list[str]) -> int:
+    from verp.debug import set_claude_version
+
+    set_claude_version()
+
+    cmd = _build_claude_cmd(args)
+    sock_path, listen_sock = _setup_socket()
+    jump_sequences = _build_jump_sequences()
+
+    pid, master_fd = pty.fork()
+    if pid == 0:
+        listen_sock.close()
+        env = os.environ.copy()
+        env["CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD"] = "1"
+        os.execvpe(cmd[0], cmd, env)
+
+    _set_winsize(master_fd)
+    signal.signal(signal.SIGWINCH, lambda _s, _f: _set_winsize(master_fd))
+
+    try:
+        _pty_loop(master_fd, sys.stdin.fileno(), listen_sock, jump_sequences)
+    finally:
         os.close(master_fd)
         listen_sock.close()
         try:
