@@ -14,30 +14,30 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
 
 ## Project structure
 
-- `src/verp/cli.py` — all CLI commands and argument parsing
-- `src/verp/monitor.py` — interactive agent monitor TUI (prompt_toolkit)
-- `src/verp/db.py` — SQLite layer and schema migrations
-- `src/verp/git.py` — git subprocess wrappers
-- `src/verp/paths.py` — all path constants (`DATA_DIR`, `CLAUDE_DIR`, `CONFIG_DIR`, `USER_CLAUDE_DIR`) and socket path helpers
-- `src/verp/time.py` — `now_ms()` timestamp helper
+- `_claude/` — bundled managed Claude config (skills, CLAUDE.md); symlinked into package as `src/verp/_claude`
+- `src/verp/_versions/` — versioned `track.sh` and `claude_settings.json` per schema version
 - `src/verp/agent.py` — shared agent display utilities (`format_age`, `directory_parts`)
+- `src/verp/cli.py` — all CLI commands and argument parsing
 - `src/verp/claude_dir.py` — managed `CLAUDE_DIR` content versioning and sync
 - `src/verp/claude_permission_hook.py` — permission dialog and socket communication
+- `src/verp/db.py` — SQLite layer and schema migrations
 - `src/verp/debug.py` — permission dialog debug snapshot capture
-- `src/verp/status.py` — rich-formatted git status display
-- `src/verp/project.py` — project migration logic
-- `src/verp/_versions/` — versioned `track.sh` and `claude_settings.json` per schema version
-- `_claude/` — bundled managed Claude config (skills, CLAUDE.md); symlinked into package as `src/verp/_claude`
 - `src/verp/focus/` — terminal window focus module
   - `__init__.py` — public API: `focus_by_tty(tty)`, `pid_to_tty(pid)`
   - `_base.py` — `TerminalFocuser` protocol
   - `_proc.py` — shared constants (`TERMINAL_EMULATORS`), `pid_to_tty`, and focuser dispatch
-  - `_focusers/_macos.py` — macOS focuser via pyobjc/osascript
-  - `_focusers/_linux_x11.py` — Linux X11 focuser via ewmh/xdotool
-  - `_focusers/_wezterm.py` — WezTerm CLI focuser
-  - `_focusers/_kitty.py` — kitty remote control focuser
   - `_focusers/_iterm2.py` — iTerm2 AppleScript focuser
+  - `_focusers/_kitty.py` — kitty remote control focuser
+  - `_focusers/_linux_x11.py` — Linux X11 focuser via ewmh/xdotool
+  - `_focusers/_macos.py` — macOS focuser via pyobjc/osascript
   - `_focusers/_tmux.py` — tmux pane focuser
+  - `_focusers/_wezterm.py` — WezTerm CLI focuser
+- `src/verp/git.py` — git subprocess wrappers
+- `src/verp/monitor.py` — interactive agent monitor TUI (prompt_toolkit)
+- `src/verp/paths.py` — all path constants (`DATA_DIR`, `CLAUDE_DIR`, `CONFIG_DIR`, `USER_CLAUDE_DIR`) and socket path helpers
+- `src/verp/project.py` — project migration logic
+- `src/verp/status.py` — rich-formatted git status display
+- `src/verp/time.py` — time utilities (`now_ms()`)
 
 ## Data
 
