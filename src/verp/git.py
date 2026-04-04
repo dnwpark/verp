@@ -132,6 +132,11 @@ def fetch(path: Path) -> subprocess.CompletedProcess[str]:
     return run(["git", "fetch"], cwd=path, check=False)
 
 
+# clone/rebase/push use subprocess.run() directly (not run()) so that git's
+# live output — progress bars, editor invocations, push summaries — flows
+# through to the user's terminal instead of being captured.
+
+
 def clone(url: str) -> int:
     return subprocess.run(["git", "clone", url], cwd=REPO_DIR).returncode
 
