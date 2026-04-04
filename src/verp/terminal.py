@@ -71,13 +71,22 @@ def _setup_socket() -> tuple[str, socket.socket]:
     return sock_path, listen_sock
 
 
+_CTRL_BACKSLASH = b"\x1c"  # raw Ctrl+\ (POSIX VQUIT)
+_CTRL_BACKSLASH_KITTY = (
+    b"\x1b[92;5u"  # kitty keyboard protocol: Ctrl+\ (codepoint 92, mod 5)
+)
+_CTRL_BACKSLASH_ITERM2 = (
+    b"\x1b[27;5;92~"  # XTerm modifyOtherKeys: Ctrl+\ (codepoint 92, mod 5)
+)
+
+
 def _build_jump_sequences() -> list[bytes]:
-    sequences: list[bytes] = [b"\x1c"]
+    sequences: list[bytes] = [_CTRL_BACKSLASH]
     terminal = _terminal_info()
     if terminal and terminal.app == "kitty":
-        sequences.append(b"\x1b[92;5u")
+        sequences.append(_CTRL_BACKSLASH_KITTY)
     elif terminal and terminal.app == "iTerm.app":
-        sequences.append(b"\x1b[27;5;92~")
+        sequences.append(_CTRL_BACKSLASH_ITERM2)
     return sequences
 
 
