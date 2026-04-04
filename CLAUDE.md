@@ -20,6 +20,7 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
 - `src/verp/git.py` — git subprocess wrappers
 - `src/verp/paths.py` — all path constants (`DATA_DIR`, `CLAUDE_DIR`, `CONFIG_DIR`, `USER_CLAUDE_DIR`) and socket path helpers
 - `src/verp/time.py` — `now_ms()` timestamp helper
+- `src/verp/agent.py` — shared agent display utilities (`format_age`, `directory_parts`)
 - `src/verp/claude_dir.py` — managed `CLAUDE_DIR` content versioning and sync
 - `src/verp/claude_permission_hook.py` — permission dialog and socket communication
 - `src/verp/debug.py` — permission dialog debug snapshot capture

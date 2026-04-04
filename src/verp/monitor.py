@@ -85,20 +85,15 @@ _STATUS_STYLE = {
 
 
 def _format_directory(directory: str) -> list[tuple[str, str]]:
-    path = Path(directory)
-    if is_project_dir(path):
-        return [("fg:mediumpurple", path.name)]
-    for p in path.parents:
-        if is_project_dir(p):
-            return [
-                ("fg:mediumpurple", p.name),
-                ("fg:grey", f"/{path.relative_to(p)}"),
-            ]
-    home = Path.home()
-    try:
-        return [("fg:grey", f"~/{path.relative_to(home)}")]
-    except ValueError:
-        return [("fg:grey", directory)]
+    from verp.agent import directory_parts
+
+    parts = directory_parts(directory)
+    result: list[tuple[str, str]] = []
+    if parts.project_name:
+        result.append(("fg:mediumpurple", parts.project_name))
+    if parts.suffix:
+        result.append(("fg:grey", parts.suffix))
+    return result
 
 
 class AgentMonitor:

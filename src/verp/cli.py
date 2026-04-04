@@ -499,17 +499,15 @@ def cmd_pull() -> int:
 
 
 def _format_directory(directory: str) -> str:
-    path = Path(directory)
-    if is_project_dir(path):
-        return f"[medium_purple1]{path.name}[/medium_purple1]"
-    for p in path.parents:
-        if is_project_dir(p):
-            return f"[medium_purple1]{p.name}[/medium_purple1][grey70]/{path.relative_to(p)}[/grey70]"
-    home = Path.home()
-    try:
-        return f"[grey70]~/{path.relative_to(home)}[/grey70]"
-    except ValueError:
-        return f"[grey70]{directory}[/grey70]"
+    from verp.agent import directory_parts
+
+    parts = directory_parts(directory)
+    result = ""
+    if parts.project_name:
+        result += f"[medium_purple1]{parts.project_name}[/medium_purple1]"
+    if parts.suffix:
+        result += f"[grey70]{parts.suffix}[/grey70]"
+    return result
 
 
 def cmd_agent_list() -> int:
