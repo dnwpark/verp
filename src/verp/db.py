@@ -400,7 +400,7 @@ def is_project_dir(path: Path) -> bool:
         return False
     with _db() as conn:
         row = conn.execute(
-            "SELECT 1 FROM projects WHERE path = ?", (str(path.resolve()),)
+            "SELECT 1 FROM projects WHERE path = ?", (str(path),)
         ).fetchone()
     return row is not None
 

@@ -100,7 +100,8 @@ def err(msg: str) -> None:
 
 
 def get_current_project() -> ProjectInfo | None:
-    for p in [Path.cwd(), *Path.cwd().parents]:
+    cwd = Path.cwd().resolve()
+    for p in [cwd, *cwd.parents]:
         if is_project_dir(p):
             return get_project(p.name)
     return None
@@ -124,7 +125,7 @@ def cmd_new(name: str, repos: list[str]) -> int:
         return 1
 
     branch = f"{branch_prefix()}{name}"
-    project_dir = Path.cwd() / name
+    project_dir = (Path.cwd() / name).resolve()
 
     if project_dir.exists():
         err(f"project '{name}' already exists at {project_dir}")
