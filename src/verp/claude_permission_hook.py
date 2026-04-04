@@ -10,6 +10,24 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal, cast
 
+
+def _terminal_cols() -> int:
+    # Use ioctl(TIOCGWINSZ) directly — shutil.get_terminal_size() falls back to
+    # COLUMNS/LINES env vars which may not reflect the real TTY size. We need
+    # the actual size for correct dialog rendering.
+    try:
+        return int(
+            struct.unpack(
+                "hhhh",
+                fcntl.ioctl(
+                    sys.stdout.fileno(), termios.TIOCGWINSZ, b"\x00" * 8
+                ),
+            )[1]
+        )
+    except Exception:
+        return 80
+
+
 from verp.db import (
     AgentStatus,
     reset_agent_tool,
@@ -70,15 +88,7 @@ def _format_question(tool: str, tool_input: dict[str, str]) -> str:
         return f"Do you want to edit {name}?"
     elif tool == "Bash":
         cmd = tool_input.get("command", "")
-        try:
-            cols = struct.unpack(
-                "hhhh",
-                fcntl.ioctl(
-                    sys.stdout.fileno(), termios.TIOCGWINSZ, b"\x00" * 8
-                ),
-            )[1]
-        except Exception:
-            cols = 80
+        cols = _terminal_cols()
         max_len = cols - 8
         wrapped = []
         for line in cmd.split("\n"):
@@ -136,13 +146,7 @@ def _render_options(
 
 
 def _claude_dialog_lines(tool: str, tool_input: dict[str, str]) -> int:
-    try:
-        cols = struct.unpack(
-            "hhhh",
-            fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b"\x00" * 8),
-        )[1]
-    except Exception:
-        cols = 80
+    cols = _terminal_cols()
     if tool == "Bash":
         command = tool_input.get("command", "")
         # Claude's dialog: "Bash command" header (1) + blank (1)
@@ -172,13 +176,7 @@ def _show_permission_dialog(
 ) -> _DialogResult:
     stdout_fd = sys.stdout.fileno()
 
-    try:
-        cols = struct.unpack(
-            "hhhh",
-            fcntl.ioctl(stdout_fd, termios.TIOCGWINSZ, b"\x00" * 8),
-        )[1]
-    except Exception:
-        cols = 80
+    cols = _terminal_cols()
 
     question = _format_question(tool, tool_input)
     question_lines = question.count("\n") + 1
