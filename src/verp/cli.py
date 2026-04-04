@@ -710,7 +710,6 @@ def _build_jump_sequences() -> list[bytes]:
 def _handle_stdin(
     data: bytes,
     jump_sequences: list[bytes],
-    master_fd: int,
 ) -> bytes:
     if b"\x03" in data:
         set_agents_status_by_pid(
@@ -796,7 +795,7 @@ def _pty_loop(
                     del pty_output_buf[:-_PTY_BUF_MAX]
             if sys.stdin in fds:
                 data = os.read(stdin_fd, 1024)
-                data = _handle_stdin(data, jump_sequences, master_fd)
+                data = _handle_stdin(data, jump_sequences)
                 if not data:
                     continue
                 try:
