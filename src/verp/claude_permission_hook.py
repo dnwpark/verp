@@ -16,6 +16,7 @@ from verp.db import (
     set_agent_status,
     set_agent_tool,
 )
+from verp.time import now_ms
 
 
 def _query_cursor_pos(stdin_fd: int) -> tuple[int, int] | None:
@@ -218,13 +219,12 @@ def _show_permission_dialog(
         r, _, _ = select.select([stdin_fd], [], [], 3.0)
         if not r:
             if session_id and directory:
-                import time
 
                 set_agent_status(
                     session_id,
                     directory,
                     AgentStatus.WAITING_PERMISSION,
-                    int(time.time() * 1000),
+                    now_ms(),
                 )
             continue
         ch = os.read(stdin_fd, 1)
@@ -339,13 +339,12 @@ def handle_permission_request(
     )
     decision = dialog.decision
     if decision.interrupt:
-        import time
 
         set_agent_status(
             session_id,
             directory,
             AgentStatus.WAITING_PROMPT,
-            int(time.time() * 1000),
+            now_ms(),
         )
         reset_agent_tool(session_id)
         os.write(master_fd, b"\x03")
@@ -418,11 +417,8 @@ def cmd_internal_hook_permission_request(
         return 0
 
     if directory and decision.behavior == "allow":
-        import time
 
-        set_agent_status(
-            session_id, directory, AgentStatus.WORKING, int(time.time() * 1000)
-        )
+        set_agent_status(session_id, directory, AgentStatus.WORKING, now_ms())
 
     decision_obj: dict[str, object] = {"behavior": decision.behavior}
     if decision.updated_input is not None:

@@ -1,8 +1,8 @@
-import time
+from verp.time import now_ms
 
 
 def format_age(updated_at: int) -> str:
-    secs = (int(time.time() * 1000) - updated_at) // 1000
+    secs = (now_ms() - updated_at) // 1000
     if secs < 60:
         return f"{secs}s ago"
     if secs < 3600:

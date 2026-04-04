@@ -11,7 +11,6 @@ import socket
 import subprocess
 import sys
 import termios
-import time
 import tty
 import textwrap
 from dataclasses import dataclass
@@ -24,6 +23,7 @@ from verp.claude_permission_hook import (
 from pathlib import Path
 
 from verp.paths import DATA_DIR
+from verp.time import now_ms
 from verp.db import (
     AgentStatus,
     SCHEMA_VERSION,
@@ -748,7 +748,7 @@ def cmd_claude(args: list[str]) -> int:
                     set_agents_status_by_pid(
                         os.getpid(),
                         AgentStatus.WAITING_PROMPT,
-                        int(time.time() * 1000),
+                        now_ms(),
                     )
                 if any(seq in data for seq in jump_sequences):
                     from verp.monitor import focus_existing_monitor
@@ -762,7 +762,7 @@ def cmd_claude(args: list[str]) -> int:
                                 session_id,
                                 os.getcwd(),
                                 AgentStatus.WAITING_PROMPT,
-                                int(time.time() * 1000),
+                                now_ms(),
                             )
                     for seq in jump_sequences:
                         data = data.replace(seq, b"")
