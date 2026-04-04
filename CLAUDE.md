@@ -17,9 +17,11 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
 - `_claude/` — bundled managed Claude config (skills, CLAUDE.md); symlinked into package as `src/verp/_claude`
 - `src/verp/_versions/` — versioned `track.sh` and `claude_settings.json` per schema version
 - `src/verp/agent.py` — shared agent display utilities (`format_age`, `directory_parts`)
-- `src/verp/cli.py` — all CLI commands and argument parsing
+- `src/verp/cli.py` — entry point: `main()`, argparse setup, and dispatch
 - `src/verp/claude_dir.py` — managed `CLAUDE_DIR` content versioning and sync
+- `src/verp/claude_hooks.py` — Claude lifecycle hook handlers (`cmd_internal_hook_*`)
 - `src/verp/claude_permission_hook.py` — permission dialog and socket communication
+- `src/verp/commands.py` — business logic command implementations (`cmd_*`)
 - `src/verp/db.py` — SQLite layer and schema migrations
 - `src/verp/debug.py` — permission dialog debug snapshot capture
 - `src/verp/focus/` — terminal window focus module
@@ -37,6 +39,7 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
 - `src/verp/paths.py` — all path constants (`DATA_DIR`, `CLAUDE_DIR`, `CONFIG_DIR`, `USER_CLAUDE_DIR`) and socket path helpers
 - `src/verp/project.py` — project migration logic
 - `src/verp/status.py` — rich-formatted git status display
+- `src/verp/terminal.py` — PTY machinery and `cmd_claude`
 - `src/verp/time.py` — time utilities (`now_ms()`)
 
 ## Data
