@@ -572,43 +572,14 @@ def _terminal_from_row(row: sqlite3.Row) -> TerminalInfo | None:
     return TerminalInfo(app=str(app), data=data)
 
 
-def get_all_agents() -> list[AgentInfo]:
-    if not _db_path(DATA_DIR).exists():
-        return []
-    with _db() as conn:
-        rows = conn.execute(
-            "SELECT session_id, directory, status, tool, updated_at, verp_pid,"
-            "       terminal_app, terminal_data"
-            " FROM agents ORDER BY updated_at DESC"
-        ).fetchall()
-    return [
-        AgentInfo(
-            session_id=str(row["session_id"]),
-            directory=str(row["directory"]),
-            status=AgentStatus(str(row["status"])),
-            tool=str(row["tool"]) if row["tool"] is not None else None,
-            updated_at=int(row["updated_at"]),
-            verp_pid=(
-                int(row["verp_pid"]) if row["verp_pid"] is not None else None
-            ),
-            terminal=_terminal_from_row(row),
-        )
-        for row in rows
-    ]
+_AGENT_COLUMNS = (
+    "SELECT session_id, directory, status, tool, updated_at, verp_pid,"
+    "       terminal_app, terminal_data"
+    " FROM agents"
+)
 
 
-def get_agent_by_prefix(prefix: str) -> AgentInfo | None:
-    if not _db_path(DATA_DIR).exists():
-        return None
-    with _db() as conn:
-        row = conn.execute(
-            "SELECT session_id, directory, status, tool, updated_at, verp_pid,"
-            "       terminal_app, terminal_data"
-            " FROM agents WHERE session_id LIKE ?",
-            (prefix + "%",),
-        ).fetchone()
-    if row is None:
-        return None
+def _agent_info_from_row(row: sqlite3.Row) -> AgentInfo:
     return AgentInfo(
         session_id=str(row["session_id"]),
         directory=str(row["directory"]),
@@ -618,3 +589,24 @@ def get_agent_by_prefix(prefix: str) -> AgentInfo | None:
         verp_pid=int(row["verp_pid"]) if row["verp_pid"] is not None else None,
         terminal=_terminal_from_row(row),
     )
+
+
+def get_all_agents() -> list[AgentInfo]:
+    if not _db_path(DATA_DIR).exists():
+        return []
+    with _db() as conn:
+        rows = conn.execute(
+            _AGENT_COLUMNS + " ORDER BY updated_at DESC"
+        ).fetchall()
+    return [_agent_info_from_row(row) for row in rows]
+
+
+def get_agent_by_prefix(prefix: str) -> AgentInfo | None:
+    if not _db_path(DATA_DIR).exists():
+        return None
+    with _db() as conn:
+        row = conn.execute(
+            _AGENT_COLUMNS + " WHERE session_id LIKE ?",
+            (prefix + "%",),
+        ).fetchone()
+    return _agent_info_from_row(row) if row is not None else None
