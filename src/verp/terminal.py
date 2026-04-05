@@ -152,6 +152,8 @@ def _pty_loop(
     listen_sock: socket.socket,
     jump_sequences: list[bytes],
 ) -> None:
+    # Good-enough first pass — enough context for a permission dialog debug snapshot.
+    # No benchmarking done; tune if snapshots miss relevant output.
     _PTY_BUF_MAX = 2048
     pty_output_buf = bytearray()
 

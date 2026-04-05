@@ -41,8 +41,9 @@ def _query_cursor_pos(stdin_fd: int) -> tuple[int, int] | None:
     """Query cursor position via DSR escape. Returns (row, col) or None."""
     import re
 
+    _CURSOR_QUERY_TIMEOUT = 0.2  # seconds to wait for terminal's DSR response
     os.write(sys.stdout.fileno(), b"\x1b[6n")
-    r, _, _ = select.select([stdin_fd], [], [], 0.2)
+    r, _, _ = select.select([stdin_fd], [], [], _CURSOR_QUERY_TIMEOUT)
     if not r:
         return None
     response = os.read(stdin_fd, 32)
@@ -151,10 +152,10 @@ def _claude_dialog_lines(tool: str, tool_input: dict[str, str]) -> int:
         command = tool_input.get("command", "")
         # Claude's dialog: "Bash command" header (1) + blank (1)
         header = 2
-        # Footer: blank + question + 2 options + blank + help = 6 lines.
+        # Footer: blank + question + 3 options + blank + Esc = 7 lines.
         # When the command has newlines, Claude adds a warning (+ blank before
         # and after it), growing the footer by 2.
-        footer = 8 if "\n" in command else 6
+        footer = 9 if "\n" in command else 7
         # Each physical line in the command is displayed with a 3-space indent
         # and wraps at (cols - 3) characters.
         cols_avail = max(cols - 3, 1)
@@ -162,7 +163,9 @@ def _claude_dialog_lines(tool: str, tool_input: dict[str, str]) -> int:
             max(1, (len(line) + cols_avail - 1) // cols_avail)
             for line in command.split("\n")
         )
-        return header + cmd_display + footer + 1  # +1 buffer
+        return header + cmd_display + footer
+    # Claude's non-Bash dialog footer: question + 3 options + blank + Esc + blank = 7 lines.
+    # We only scroll past this portion — the header and content preview above are left in place.
     return 7
 
 
@@ -214,7 +217,10 @@ def _show_permission_dialog(
     in_escape = False
     in_csi = False
     while True:
-        r, _, _ = select.select([stdin_fd], [], [], 3.0)
+        _PERMISSION_POLL_INTERVAL = (
+            3.0  # seconds between agent status re-stamps while dialog is open
+        )
+        r, _, _ = select.select([stdin_fd], [], [], _PERMISSION_POLL_INTERVAL)
         if not r:
             if session_id and directory:
 
@@ -253,7 +259,10 @@ def _show_permission_dialog(
                 in_escape = False
             continue
         if ch == b"\x1b":
-            r, _, _ = select.select([stdin_fd], [], [], 0.05)
+            _ESCAPE_SEQ_TIMEOUT = (
+                0.05  # seconds to distinguish bare Esc from Esc-prefix sequences
+            )
+            r, _, _ = select.select([stdin_fd], [], [], _ESCAPE_SEQ_TIMEOUT)
             if not r:
                 _clear_dialog()
                 cursor_end = _query_cursor_pos(stdin_fd)
