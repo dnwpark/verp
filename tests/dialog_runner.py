@@ -55,33 +55,130 @@ class Scenario:
     tool: str
     approve: bool
 
+    # Exact multi-line dialog block to match in screen_dialog after normalization.
+    # Use {tmp} for the temp dir and {option2} for the variable option-2 line.
+    # Empty string disables block assertion (e.g. for multiline-command scenarios
+    # where the command display is non-deterministic).
+    expected_dialog_block: str = ""
+    # Block to match in screen_after after normalization.
+    # Use {tmp} for the temp dir and {...} as a multi-line wildcard for variable
+    # content between the user's prompt echo and the result line.
+    expected_after_block: str = ""
+    # Marker to poll for in the pane before capturing screen_after.
+    # Avoids capturing while Claude is still mid-operation.
+    # Empty string falls back to a fixed time.sleep.
+    result_poll_marker: str = ""
+
+
+# Dialog block constants.
+# The leading \n matches the blank line that opens verp's dialog; {option2} is
+# a placeholder for the variable "always allow" option whose label depends on
+# Claude's permission_suggestions.
+_WRITE_DIALOG = """
+ Do you want to write hello.txt?
+
+ ❯ 1. Yes
+{option2}
+   3. No
+ Esc to cancel"""
+
+# Bash scenarios: use the minimal command directly so Claude passes it through
+# unchanged, making the dialog question deterministic.
+_BASH_SINGLE_DIALOG = """
+ Run: echo hello > {tmp}/hello.txt
+
+ ❯ 1. Yes
+{option2}
+   3. No
+ Esc to cancel"""
+
+_BASH_MULTILINE_DIALOG = """
+ Run: bash -c "echo hello > {tmp}/hello.txt
+echo world > {tmp}/world.txt"
+
+ ❯ 1. Yes
+{option2}
+   3. No
+ Esc to cancel"""
+
+# After-screen block constants.
+# Format: anchor (non-path prefix of the prompt, no trailing newline so it
+# matches both wrapped and non-wrapped terminals){...}result line (with its
+# leading \n + "  ⎿ \xa0" prefix that Claude renders for tool results).
+#
+# Bash deny triggers verp's interrupt (Ctrl+C), which Claude surfaces as
+# "Interrupted"; Write deny returns behavior:deny and Claude shows
+# "User rejected".
+_WRITE_ALLOW_AFTER = """\
+❯ write 'hello' to{...}
+  ⎿ \xa0Allowed by PermissionRequest hook"""
+
+_WRITE_DENY_AFTER = """\
+❯ write 'hello' to{...}
+  ⎿ \xa0User rejected"""
+
+_BASH_SINGLE_ALLOW_AFTER = """\
+❯ echo hello >{...}
+  ⎿ \xa0Allowed by PermissionRequest hook"""
+
+_BASH_SINGLE_DENY_AFTER = """\
+❯ echo hello >{...}
+     Interrupted"""
+
+_BASH_MULTILINE_ALLOW_AFTER = """\
+❯ run in a single step{...}
+  ⎿ \xa0Allowed by PermissionRequest hook"""
 
 SCENARIOS: dict[str, Scenario] = {
     s.name: s
     for s in [
         Scenario(
-            "write_allow", "write 'hello' to {tmp}/hello.txt", "Write", True
+            "write_allow",
+            "write 'hello' to {tmp}/hello.txt",
+            "Write",
+            True,
+            expected_dialog_block=_WRITE_DIALOG,
+            expected_after_block=_WRITE_ALLOW_AFTER,
+            result_poll_marker="Allowed by PermissionRequest hook",
         ),
         Scenario(
-            "write_deny", "write 'hello' to {tmp}/hello.txt", "Write", False
+            "write_deny",
+            "write 'hello' to {tmp}/hello.txt",
+            "Write",
+            False,
+            expected_dialog_block=_WRITE_DIALOG,
+            expected_after_block=_WRITE_DENY_AFTER,
         ),
         Scenario(
             "bash_single_allow",
-            "bash -c 'echo hello > {tmp}/hello.txt'",
+            "echo hello > {tmp}/hello.txt",
             "Bash",
             True,
+            expected_dialog_block=_BASH_SINGLE_DIALOG,
+            expected_after_block=_BASH_SINGLE_ALLOW_AFTER,
+            result_poll_marker="Allowed by PermissionRequest hook",
         ),
         Scenario(
             "bash_single_deny",
-            "bash -c 'echo hello > {tmp}/hello.txt'",
+            "echo hello > {tmp}/hello.txt",
             "Bash",
             False,
+            expected_dialog_block=_BASH_SINGLE_DIALOG,
+            expected_after_block=_BASH_SINGLE_DENY_AFTER,
         ),
         Scenario(
             "bash_multiline",
-            "bash -c 'echo hello\\necho world'",
+            # Real newlines in the prompt: tmux sends each line as a separate
+            # message, and Claude reassembles them into a single bash -c command
+            # with an embedded newline — exercising verp's multiline dialog path.
+            "run in a single step, commands with newlines, no && or ;\n"
+            'bash -c "echo hello > {tmp}/hello.txt\n'
+            'echo world > {tmp}/world.txt"',
             "Bash",
             True,
+            expected_dialog_block=_BASH_MULTILINE_DIALOG,
+            expected_after_block=_BASH_MULTILINE_ALLOW_AFTER,
+            result_poll_marker="Allowed by PermissionRequest hook",
         ),
     ]
 }
@@ -106,8 +203,103 @@ class RunResult:
     snapshot: PermissionSnapshot | None
     screen_dialog: str  # scrollback captured while the verp dialog is visible
     screen_after: str
+    tmp_dir: str  # temp dir path for normalizing paths in assertions
     success: bool
     error: str | None
+
+
+def normalize_screen(screen: str, tmp_dir: str) -> str:
+    """Replace the test temp dir with {tmp} and strip tmux line-padding.
+
+    tmux capture-pane -p pads every line with spaces to the terminal width.
+    Stripping trailing whitespace per line makes comparisons terminal-width-agnostic.
+    Leading whitespace is preserved — it is meaningful in verp's dialog rendering.
+    """
+    replaced = screen.replace(tmp_dir, "{tmp}")
+    return "\n".join(line.rstrip() for line in replaced.split("\n"))
+
+
+def match_with_wildcards(screen: str, expected: str) -> bool:
+    """Return True if every section of *expected* (split on ``{...}``) appears
+    in *screen* in order.
+
+    ``{...}`` acts as a multi-line wildcard: any amount of content (including
+    none) may appear between consecutive sections.  All other text in *expected*
+    is matched literally, so ``{tmp}`` is treated as the normalised placeholder
+    string, not a wildcard.
+    """
+    pos = 0
+    for section in expected.split("{...}"):
+        if not section:
+            continue
+        idx = screen.find(section, pos)
+        if idx == -1:
+            return False
+        pos = idx + len(section)
+    return True
+
+
+def extract_dialog_block(screen: str) -> str | None:
+    """Extract the verp dialog block from a tmux-captured screen.
+
+    Locates the trailing " Esc to cancel" line then scans backwards to find
+    the second blank line (the one that precedes the question), yielding the
+    complete block including all blank lines.
+    """
+    lines = screen.split("\n")
+    # Find the last "Esc to cancel" line.
+    esc_idx = next(
+        (
+            i
+            for i in range(len(lines) - 1, -1, -1)
+            if lines[i].rstrip() == " Esc to cancel"
+        ),
+        None,
+    )
+    if esc_idx is None:
+        return None
+    # Scan backwards through options + blank-after-question + question lines
+    # to reach the blank line that opens the dialog.
+    blank_count = 0
+    start_idx = None
+    for i in range(esc_idx - 1, -1, -1):
+        if lines[i].strip() == "":
+            blank_count += 1
+            if blank_count == 2:
+                start_idx = i
+                break
+    if start_idx is None:
+        return None
+    return "\n".join(lines[start_idx : esc_idx + 1])
+
+
+def normalize_dialog_option2(block: str) -> str:
+    """Collapse option-2 line(s) — including terminal-wrapped continuations —
+    into the single literal token ``{option2}``.
+
+    Option 2 starts with ``   2.`` and its visual continuations are any lines
+    that follow before option 3 (``   3.``), the selected-option marker
+    (`` ❯``), or the footer (`` Esc to cancel``).
+    """
+    lines = block.split("\n")
+    result: list[str] = []
+    in_opt2 = False
+    for line in lines:
+        if line.startswith("   2."):
+            if not in_opt2:
+                result.append("{option2}")
+                in_opt2 = True
+        elif in_opt2 and not (
+            line.startswith("   3.")
+            or line.startswith(" ❯")
+            or line.rstrip() == " Esc to cancel"
+        ):
+            # Wrapped continuation of option 2 — absorb into placeholder.
+            pass
+        else:
+            in_opt2 = False
+            result.append(line)
+    return "\n".join(result)
 
 
 # ── Terminal detection ────────────────────────────────────────────────────────
@@ -235,6 +427,7 @@ def run_tmux(
                 snapshot=None,
                 screen_dialog="",
                 screen_after=screen,
+                tmp_dir=test_dir,
                 success=False,
                 error="Claude did not become ready within timeout",
             )
@@ -253,6 +446,7 @@ def run_tmux(
                 snapshot=None,
                 screen_dialog="",
                 screen_after=screen,
+                tmp_dir=test_dir,
                 success=False,
                 error="Dialog did not appear within timeout",
             )
@@ -265,8 +459,11 @@ def run_tmux(
             ["tmux", "send-keys", "-t", session, "-l", key], check=True
         )
 
-        # Wait for dialog to dismiss then capture final screen
+        # Wait for dialog to dismiss, then wait for the result to appear before
+        # capturing — avoids snapshotting while Claude is still mid-operation.
         _poll_for_dialog_gone(session, scenario.tool)
+        if scenario.result_poll_marker:
+            _poll_tmux(session, scenario.result_poll_marker, timeout=30)
         time.sleep(1)
         screen = _tmux_capture(session)
 
@@ -328,6 +525,7 @@ def run_tmux(
             snapshot=snapshot,
             screen_dialog=screen_dialog,
             screen_after=screen,
+            tmp_dir=test_dir,
             success=True,
             error=None,
         )
@@ -340,6 +538,7 @@ def run_tmux(
             snapshot=None,
             screen_dialog="",
             screen_after="",
+            tmp_dir=test_dir,
             success=False,
             error=f"{type(e).__name__}: {e}",
         )
@@ -365,6 +564,7 @@ def run_kitty(
         snapshot=None,
         screen_dialog="",
         screen_after="",
+        tmp_dir=test_dir,
         success=False,
         error="kitty backend not yet implemented",
     )
@@ -385,6 +585,7 @@ def run_iterm2(
         snapshot=None,
         screen_dialog="",
         screen_after="",
+        tmp_dir=test_dir,
         success=False,
         error="iTerm2 backend not yet implemented",
     )
@@ -405,6 +606,7 @@ def run_apple_terminal(
         snapshot=None,
         screen_dialog="",
         screen_after="",
+        tmp_dir=test_dir,
         success=False,
         error="Apple Terminal backend not yet implemented",
     )

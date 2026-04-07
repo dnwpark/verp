@@ -12,7 +12,16 @@ from collections.abc import Generator
 
 import pytest
 
-from tests.dialog_runner import SCENARIOS, Terminal, TerminalSize, run_scenario
+from tests.dialog_runner import (
+    SCENARIOS,
+    Terminal,
+    TerminalSize,
+    extract_dialog_block,
+    match_with_wildcards,
+    normalize_dialog_option2,
+    normalize_screen,
+    run_scenario,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -23,20 +32,63 @@ def _rate_limit_delay() -> Generator[None, None, None]:
 
 
 def _assert_screen(result: object) -> None:
-    """Screen content assertions.
-
-    screen_dialog and screen_after are the tmux scrollback captured while
-    verp's dialog is visible and after it's dismissed respectively.
-    pty_buffer is the raw PTY output before verp intercepted.
-
-    Currently asserting non-empty as a baseline; update with more specific
-    content assertions once the dialog alignment bug (col offset) is fixed.
-    """
+    """Screen content assertions for dialog visibility and dismissal."""
     from tests.dialog_runner import RunResult
 
     assert isinstance(result, RunResult)
-    assert result.screen_dialog != ""  # should contain verp's dialog
-    assert result.screen_after != ""  # should contain post-dialog output
+
+    norm_dialog = normalize_screen(result.screen_dialog, result.tmp_dir)
+    norm_after = normalize_screen(result.screen_after, result.tmp_dir)
+
+    # ── screen_dialog ─────────────────────────────────────────────────────────
+
+    # Must not be Claude's native dialog (which uses "·" in its footer).
+    assert (
+        "Esc to cancel ·" not in norm_dialog
+    ), "showing Claude dialog, not verp"
+
+    # The user's prompt line must be visible in the scrollback.
+    # Claude's CLI prefixes the human turn with "❯ ".
+    # Use the first line of the prompt and the non-path prefix only: multiline
+    # prompts are sent as separate messages (each \n becomes an Enter press via
+    # tmux), and at narrow widths a path may wrap across rows preventing {tmp}
+    # normalisation from working on split content.
+    first_prompt_line = result.scenario.prompt.split("\n")[0]
+    prompt_prefix = "❯ " + first_prompt_line.split("{tmp}")[0].rstrip()
+    assert (
+        prompt_prefix in norm_dialog
+    ), f"Prompt prefix {prompt_prefix!r} not visible in screen_dialog"
+
+    # Exact dialog box comparison (includes blank lines and structure).
+    # Option 2 is collapsed to {option2} because its label varies with
+    # Claude's permission_suggestions.
+    block = extract_dialog_block(norm_dialog)
+    assert block is not None, "verp dialog block not found in screen_dialog"
+    assert (
+        normalize_dialog_option2(block)
+        == result.scenario.expected_dialog_block
+    ), (
+        f"Dialog block mismatch.\n"
+        f"Got (normalized):\n{normalize_dialog_option2(block)!r}\n"
+        f"Expected:\n{result.scenario.expected_dialog_block!r}"
+    )
+
+    # ── screen_after ──────────────────────────────────────────────────────────
+
+    # Dialog must be dismissed.
+    assert (
+        " Esc to cancel\n" not in norm_after
+    ), "dialog still visible after response"
+
+    # Check the after block: prompt echo → (variable tool output) → result line.
+    assert match_with_wildcards(
+        norm_after, result.scenario.expected_after_block
+    ), (
+        f"After block not matched.\n"
+        f"Expected (with {{...}} wildcards):\n{result.scenario.expected_after_block!r}\n"
+        f"Screen (last 30 lines):\n"
+        + "\n".join(norm_after.splitlines()[-30:])
+    )
 
 
 pytestmark = [
