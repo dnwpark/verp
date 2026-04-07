@@ -1,6 +1,11 @@
+import os
 from pathlib import Path
 
-DATA_DIR = Path.home() / ".local" / "share" / "verp"
+DATA_DIR = (
+    Path(os.environ["VERP_DATA_DIR"])
+    if "VERP_DATA_DIR" in os.environ
+    else Path.home() / ".local" / "share" / "verp"
+)
 CLAUDE_DIR = DATA_DIR / "claude_dir"
 
 CONFIG_DIR = Path.home() / ".config" / "verp"

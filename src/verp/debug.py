@@ -34,6 +34,12 @@ def _verp_version() -> str:
         return "unknown"
 
 
+@dataclass(frozen=True, kw_only=True)
+class CursorPosition:
+    row: int
+    col: int
+
+
 @dataclass(frozen=True)
 class PermissionSnapshot:
     timestamp: str
@@ -41,10 +47,10 @@ class PermissionSnapshot:
     claude_version: str
     terminal_cols: int
     terminal_rows: int
-    cursor_before: tuple[int, int] | None  # before handle_permission_request
-    cursor_start: tuple[int, int] | None  # after erasing Claude's dialog
-    cursor_end: tuple[int, int] | None  # after erasing verp's dialog
-    cursor_after: tuple[int, int] | None  # after handle_permission_request
+    cursor_before: CursorPosition | None  # before handle_permission_request
+    cursor_start: CursorPosition | None  # after erasing Claude's dialog
+    cursor_end: CursorPosition | None  # after erasing verp's dialog
+    cursor_after: CursorPosition | None  # after handle_permission_request
     pty_buffer: str  # last bytes of PTY output before dialog, lossy-decoded
     tool: str
     directory: str
@@ -53,10 +59,10 @@ class PermissionSnapshot:
 
 def build_snapshot(
     *,
-    cursor_before: tuple[int, int] | None,
-    cursor_start: tuple[int, int] | None,
-    cursor_end: tuple[int, int] | None,
-    cursor_after: tuple[int, int] | None,
+    cursor_before: CursorPosition | None,
+    cursor_start: CursorPosition | None,
+    cursor_end: CursorPosition | None,
+    cursor_after: CursorPosition | None,
     pty_buffer: bytes,
     tool: str,
     directory: str,

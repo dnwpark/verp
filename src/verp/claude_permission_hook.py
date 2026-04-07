@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal, cast
 
+from verp.debug import CursorPosition
+
 
 def _terminal_cols() -> int:
     # Use ioctl(TIOCGWINSZ) directly — shutil.get_terminal_size() falls back to
@@ -37,8 +39,8 @@ from verp.db import (
 from verp.time import now_ms
 
 
-def _query_cursor_pos(stdin_fd: int) -> tuple[int, int] | None:
-    """Query cursor position via DSR escape. Returns (row, col) or None."""
+def _query_cursor_pos(stdin_fd: int) -> CursorPosition | None:
+    """Query cursor position via DSR escape. Returns CursorPosition or None."""
     import re
 
     _CURSOR_QUERY_TIMEOUT = 0.2  # seconds to wait for terminal's DSR response
@@ -49,15 +51,15 @@ def _query_cursor_pos(stdin_fd: int) -> tuple[int, int] | None:
     response = os.read(stdin_fd, 32)
     m = re.search(rb"\x1b\[(\d+);(\d+)R", response)
     if m:
-        return (int(m.group(1)), int(m.group(2)))
+        return CursorPosition(row=int(m.group(1)), col=int(m.group(2)))
     return None
 
 
 @dataclass(frozen=True)
 class _DialogResult:
     decision: "PermissionDecision"
-    cursor_start: tuple[int, int] | None  # after erasing Claude's dialog
-    cursor_end: tuple[int, int] | None  # after erasing verp's dialog
+    cursor_start: CursorPosition | None  # after erasing Claude's dialog
+    cursor_end: CursorPosition | None  # after erasing verp's dialog
 
 
 @dataclass(frozen=True)
@@ -65,8 +67,8 @@ class PermissionResult:
     tool: str
     directory: str
     decision: Literal["allow", "deny"]
-    cursor_start: tuple[int, int] | None
-    cursor_end: tuple[int, int] | None
+    cursor_start: CursorPosition | None
+    cursor_end: CursorPosition | None
 
 
 @dataclass
@@ -181,6 +183,11 @@ def _show_permission_dialog(
 
     cols = _terminal_cols()
 
+    # Flush stale input first — discards any buffered Claude output before we
+    # render our dialog. Doing this early ensures the keypress sent by the user
+    # (or test harness) always arrives after the flush, not before.
+    termios.tcflush(stdin_fd, termios.TCIFLUSH)
+
     question = _format_question(tool, tool_input)
     question_lines = question.count("\n") + 1
     question_terminal = question.replace("\n", "\r\n")
@@ -191,6 +198,11 @@ def _show_permission_dialog(
         max(1, (len(label) + option_cols - 1) // option_cols)
         for label in options
     )
+    # Capture column before scrolling — used to restore after dialog clears.
+    # The scroll sequence includes \r which always resets to col 1.
+    _pos_before_scroll = _query_cursor_pos(stdin_fd)
+    _original_col = _pos_before_scroll.col if _pos_before_scroll else 1
+
     n = _claude_dialog_lines(tool, tool_input)
     os.write(stdout_fd, f"\x1b[{n}A\r\x1b[J".encode())
     cursor_start = _query_cursor_pos(stdin_fd)
@@ -202,8 +214,6 @@ def _show_permission_dialog(
     _render_options(stdout_fd, selected, options)
     os.write(stdout_fd, " \x1b[2mEsc to cancel\x1b[0m\r\n".encode())
 
-    termios.tcflush(stdin_fd, termios.TCIFLUSH)
-
     def _clear_dialog() -> None:
         # Clear verp dialog lines and return cursor to row R (the jump target).
         # Layout: question_lines + blank(1) + options_display_lines + esc(1).
@@ -212,6 +222,8 @@ def _show_permission_dialog(
         # Restore cursor to C_end where Claude expects it (R + n).
         if n > 0:
             os.write(stdout_fd, f"\x1b[{n}B".encode())
+        # Restore the original column (\r in the erase sequence left us at col 1).
+        os.write(stdout_fd, f"\x1b[{_original_col}G".encode())
         termios.tcflush(stdin_fd, termios.TCIFLUSH)
 
     in_escape = False
@@ -259,9 +271,7 @@ def _show_permission_dialog(
                 in_escape = False
             continue
         if ch == b"\x1b":
-            _ESCAPE_SEQ_TIMEOUT = (
-                0.05  # seconds to distinguish bare Esc from Esc-prefix sequences
-            )
+            _ESCAPE_SEQ_TIMEOUT = 0.05  # seconds to distinguish bare Esc from Esc-prefix sequences
             r, _, _ = select.select([stdin_fd], [], [], _ESCAPE_SEQ_TIMEOUT)
             if not r:
                 _clear_dialog()
