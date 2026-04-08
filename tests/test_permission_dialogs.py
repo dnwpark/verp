@@ -65,8 +65,7 @@ def _assert_screen(result: object) -> None:
     block = extract_dialog_block(norm_dialog)
     assert block is not None, "verp dialog block not found in screen_dialog"
     assert (
-        normalize_dialog_option2(block)
-        == result.scenario.expected_dialog_block
+        normalize_dialog_option2(block) == result.scenario.expected_dialog_block
     ), (
         f"Dialog block mismatch.\n"
         f"Got (normalized):\n{normalize_dialog_option2(block)!r}\n"
@@ -86,8 +85,7 @@ def _assert_screen(result: object) -> None:
     ), (
         f"After block not matched.\n"
         f"Expected (with {{...}} wildcards):\n{result.scenario.expected_after_block!r}\n"
-        f"Screen (last 30 lines):\n"
-        + "\n".join(norm_after.splitlines()[-30:])
+        f"Screen (last 30 lines):\n" + "\n".join(norm_after.splitlines()[-30:])
     )
 
 

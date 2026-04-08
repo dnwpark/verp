@@ -85,7 +85,16 @@ class PermissionDecision:
 def _format_question(tool: str, tool_input: dict[str, str]) -> str:
     if tool == "Write":
         name = Path(tool_input.get("file_path", "file")).name
-        return f"Do you want to write {name}?"
+        content = tool_input.get("content", "")
+        lines = content.splitlines()
+        if lines:
+            width = len(str(len(lines)))
+            numbered = "\n".join(
+                f" {str(i + 1).rjust(width)} {line}"
+                for i, line in enumerate(lines)
+            )
+            return f"Write {name}?\n\n{numbered}"
+        return f"Write {name}?"
     elif tool in ("Edit", "MultiEdit"):
         name = Path(tool_input.get("file_path", "file")).name
         return f"Do you want to edit {name}?"

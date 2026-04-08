@@ -75,7 +75,9 @@ class Scenario:
 # a placeholder for the variable "always allow" option whose label depends on
 # Claude's permission_suggestions.
 _WRITE_DIALOG = """
- Do you want to write hello.txt?
+ Write hello.txt?
+
+ 1 hello
 
  ❯ 1. Yes
 {option2}
@@ -242,12 +244,19 @@ def match_with_wildcards(screen: str, expected: str) -> bool:
 def extract_dialog_block(screen: str) -> str | None:
     """Extract the verp dialog block from a tmux-captured screen.
 
-    Locates the trailing " Esc to cancel" line then scans backwards to find
-    the second blank line (the one that precedes the question), yielding the
-    complete block including all blank lines.
+    Strategy:
+    1. Anchor on the trailing " Esc to cancel" line.
+    2. Scan back to find " ❯ 1. Yes" (the selected option); the blank
+       immediately before it separates dialog content from the options.
+    3. Continue scanning back through question/content lines to find the
+       opening blank.  Internal blanks (e.g. between the question and
+       file-content lines) are distinguished from the opening blank by
+       checking the line above: if it starts with " " it is still dialog
+       content; if it does not (or we are at the screen edge) it is the
+       opening blank that precedes the entire dialog.
     """
     lines = screen.split("\n")
-    # Find the last "Esc to cancel" line.
+    # 1. Find the last " Esc to cancel" line.
     esc_idx = next(
         (
             i
@@ -258,14 +267,22 @@ def extract_dialog_block(screen: str) -> str | None:
     )
     if esc_idx is None:
         return None
-    # Scan backwards through options + blank-after-question + question lines
-    # to reach the blank line that opens the dialog.
-    blank_count = 0
+    # 2. Find " ❯ 1. Yes" scanning backwards from esc_idx.
+    option1_idx = next(
+        (i for i in range(esc_idx - 1, -1, -1) if lines[i].startswith(" ❯")),
+        None,
+    )
+    if option1_idx is None or option1_idx == 0:
+        return None
+    if lines[option1_idx - 1].strip() != "":
+        return None
+    blank_before_opts = option1_idx - 1
+    # 3. Scan backwards to find the opening blank.
     start_idx = None
-    for i in range(esc_idx - 1, -1, -1):
+    for i in range(blank_before_opts - 1, -1, -1):
         if lines[i].strip() == "":
-            blank_count += 1
-            if blank_count == 2:
+            above = lines[i - 1] if i > 0 else ""
+            if not above.startswith(" "):
                 start_idx = i
                 break
     if start_idx is None:
@@ -348,9 +365,11 @@ def _poll_for_claude_ready(session: str, timeout: float = 60) -> bool:
     return _poll_tmux(session, "? for shortcuts", timeout)
 
 
-def _poll_for_dialog_gone(session: str, tool: str, timeout: float = 15) -> None:
-    """Wait until verp's dialog is no longer visible (best-effort)."""
-    marker = _VERP_DIALOG_MARKER
+def _poll_for_dialog_gone(
+    session: str, tool: str, wrapper: Wrapper, timeout: float = 15
+) -> None:
+    """Wait until the permission dialog is no longer visible (best-effort)."""
+    marker = _VERP_DIALOG_MARKER if wrapper == "verp" else _NATIVE_DIALOG_MARKER
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         result = subprocess.run(
@@ -368,10 +387,15 @@ _VERP_DIALOG_MARKER = " Esc to cancel\n"
 # Claude's native dialog ends with "Esc to cancel · Tab to amend", so this
 # marker reliably identifies verp's dialog regardless of permission suggestions.
 
+_NATIVE_DIALOG_MARKER = "Esc to cancel ·"
 
-def _poll_for_dialog(session: str, tool: str, timeout: float = 60) -> bool:
-    """Poll until verp's permission dialog is visible."""
-    return _poll_tmux(session, _VERP_DIALOG_MARKER, timeout)
+
+def _poll_for_dialog(
+    session: str, tool: str, wrapper: Wrapper, timeout: float = 60
+) -> bool:
+    """Poll until the permission dialog (verp or native) is visible."""
+    marker = _VERP_DIALOG_MARKER if wrapper == "verp" else _NATIVE_DIALOG_MARKER
+    return _poll_tmux(session, marker, timeout)
 
 
 def _tmux_capture(session: str) -> str:
@@ -436,7 +460,7 @@ def run_tmux(
             ["tmux", "send-keys", "-t", session, prompt, "Enter"],
             check=True,
         )
-        if not _poll_for_dialog(session, scenario.tool):
+        if not _poll_for_dialog(session, scenario.tool, wrapper):
             screen = _tmux_capture(session)
             return RunResult(
                 scenario=scenario,
@@ -461,7 +485,7 @@ def run_tmux(
 
         # Wait for dialog to dismiss, then wait for the result to appear before
         # capturing — avoids snapshotting while Claude is still mid-operation.
-        _poll_for_dialog_gone(session, scenario.tool)
+        _poll_for_dialog_gone(session, scenario.tool, wrapper)
         if scenario.result_poll_marker:
             _poll_tmux(session, scenario.result_poll_marker, timeout=30)
         time.sleep(1)
