@@ -13,6 +13,18 @@ from typing import Literal, cast
 from verp.debug import CursorPosition
 
 
+def _terminal_size() -> tuple[int, int]:
+    """Return (rows, cols) from the TTY via ioctl(TIOCGWINSZ)."""
+    try:
+        r, c = struct.unpack(
+            "hhhh",
+            fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b"\x00" * 8),
+        )[:2]
+        return int(r), int(c)
+    except Exception:
+        return 24, 80
+
+
 def _terminal_cols() -> int:
     # Use ioctl(TIOCGWINSZ) directly — shutil.get_terminal_size() falls back to
     # COLUMNS/LINES env vars which may not reflect the real TTY size. We need
@@ -83,21 +95,18 @@ class PermissionDecision:
 
 
 def _format_question(tool: str, tool_input: dict[str, str]) -> str:
+    # For Write and Edit, Claude's native dialog already renders a content/diff
+    # preview above the footer.  Verp erases only the 7-line footer and stamps
+    # its own question + options in that space, so the native preview stays
+    # visible and we don't duplicate it.
     if tool == "Write":
         name = Path(tool_input.get("file_path", "file")).name
-        content = tool_input.get("content", "")
-        lines = content.splitlines()
-        if lines:
-            width = len(str(len(lines)))
-            numbered = "\n".join(
-                f" {str(i + 1).rjust(width)} {line}"
-                for i, line in enumerate(lines)
-            )
-            return f"Write {name}?\n\n{numbered}"
         return f"Write {name}?"
     elif tool in ("Edit", "MultiEdit"):
         name = Path(tool_input.get("file_path", "file")).name
-        return f"Do you want to edit {name}?"
+        replace_all = bool(tool_input.get("replace_all", False))
+        suffix = " (replace all)" if replace_all else ""
+        return f"Edit {name}?{suffix}"
     elif tool == "Bash":
         cmd = tool_input.get("command", "")
         cols = _terminal_cols()
@@ -175,8 +184,10 @@ def _claude_dialog_lines(tool: str, tool_input: dict[str, str]) -> int:
             for line in command.split("\n")
         )
         return header + cmd_display + footer
-    # Claude's non-Bash dialog footer: question + 3 options + blank + Esc + blank = 7 lines.
-    # We only scroll past this portion — the header and content preview above are left in place.
+
+    # Non-Bash footer: question + 3 options + blank + Esc + blank = 7 lines.
+    # For Write/Edit this is reduced dynamically in _show_permission_dialog
+    # to preserve Claude's native content/diff preview when there's room.
     return 7
 
 
@@ -213,6 +224,13 @@ def _show_permission_dialog(
     _original_col = _pos_before_scroll.col if _pos_before_scroll else 1
 
     n = _claude_dialog_lines(tool, tool_input)
+    # For Write/Edit, Claude renders a content/diff preview above its footer.
+    # Reduce n to preserve that preview: n=1 keeps it all, but the dialog
+    # needs 7 rows below the scroll position.  Increase n only enough to fit.
+    # Falls back to the full n=7 when cursor position is unavailable.
+    term_rows, _ = _terminal_size()
+    if _pos_before_scroll and tool in ("Write", "Edit", "MultiEdit"):
+        n = max(1, _pos_before_scroll.row + 7 - term_rows)
     os.write(stdout_fd, f"\x1b[{n}A\r\x1b[J".encode())
     cursor_start = _query_cursor_pos(stdin_fd)
     os.write(

@@ -16,9 +16,7 @@ from tests.dialog_runner import (
     SCENARIOS,
     Terminal,
     TerminalSize,
-    extract_dialog_block,
     match_with_wildcards,
-    normalize_dialog_option2,
     normalize_screen,
     run_scenario,
 )
@@ -48,28 +46,20 @@ def _assert_screen(result: object) -> None:
     ), "showing Claude dialog, not verp"
 
     # The user's prompt line must be visible in the scrollback.
-    # Claude's CLI prefixes the human turn with "❯ ".
-    # Use the first line of the prompt and the non-path prefix only: multiline
-    # prompts are sent as separate messages (each \n becomes an Enter press via
-    # tmux), and at narrow widths a path may wrap across rows preventing {tmp}
-    # normalisation from working on split content.
     first_prompt_line = result.scenario.prompt.split("\n")[0]
     prompt_prefix = "❯ " + first_prompt_line.split("{tmp}")[0].rstrip()
     assert (
         prompt_prefix in norm_dialog
     ), f"Prompt prefix {prompt_prefix!r} not visible in screen_dialog"
 
-    # Exact dialog box comparison (includes blank lines and structure).
-    # Option 2 is collapsed to {option2} because its label varies with
-    # Claude's permission_suggestions.
-    block = extract_dialog_block(norm_dialog)
-    assert block is not None, "verp dialog block not found in screen_dialog"
-    assert (
-        normalize_dialog_option2(block) == result.scenario.expected_dialog_block
+    # Combined check: Claude's native preview (if any) + verp's dialog footer.
+    # {tmp} is normalised, {any} is a wildcard.
+    assert match_with_wildcards(
+        norm_dialog, result.scenario.expected_screen_dialog
     ), (
-        f"Dialog block mismatch.\n"
-        f"Got (normalized):\n{normalize_dialog_option2(block)!r}\n"
-        f"Expected:\n{result.scenario.expected_dialog_block!r}"
+        f"Screen dialog not matched.\n"
+        f"Expected (with wildcards):\n{result.scenario.expected_screen_dialog!r}\n"
+        f"Screen (last 30 lines):\n" + "\n".join(norm_dialog.splitlines()[-30:])
     )
 
     # ── screen_after ──────────────────────────────────────────────────────────
@@ -79,12 +69,12 @@ def _assert_screen(result: object) -> None:
         " Esc to cancel\n" not in norm_after
     ), "dialog still visible after response"
 
-    # Check the after block: prompt echo → (variable tool output) → result line.
+    # Prompt echo → (variable tool output) → result line.
     assert match_with_wildcards(
-        norm_after, result.scenario.expected_after_block
+        norm_after, result.scenario.expected_screen_after
     ), (
-        f"After block not matched.\n"
-        f"Expected (with {{...}} wildcards):\n{result.scenario.expected_after_block!r}\n"
+        f"Screen after not matched.\n"
+        f"Expected (with wildcards):\n{result.scenario.expected_screen_after!r}\n"
         f"Screen (last 30 lines):\n" + "\n".join(norm_after.splitlines()[-30:])
     )
 
@@ -136,6 +126,43 @@ def test_bash_single_allow() -> None:
     _assert_screen(result)
 
 
+def test_edit_allow() -> None:
+    # 40 rows so n=1: both ╌╌╌ separators in Claude's preview stay visible.
+    result = run_scenario(
+        SCENARIOS["edit_allow"],
+        terminal=Terminal.TMUX,
+        size=TerminalSize(cols=120, rows=40),
+        wrapper="verp",
+    )
+    assert result.success, result.error
+    assert result.snapshot is not None
+    assert result.snapshot.tool == "Edit"
+    assert result.snapshot.decision == "allow"
+    assert result.snapshot.cursor_before is not None
+    assert result.snapshot.cursor_after is not None
+    assert result.snapshot.cursor_after.row == result.snapshot.cursor_before.row
+    assert result.snapshot.cursor_after.col == result.snapshot.cursor_before.col
+    _assert_screen(result)
+
+
+def test_edit_replace_all() -> None:
+    result = run_scenario(
+        SCENARIOS["edit_replace_all"],
+        terminal=Terminal.TMUX,
+        size=TerminalSize(cols=120, rows=40),
+        wrapper="verp",
+    )
+    assert result.success, result.error
+    assert result.snapshot is not None
+    assert result.snapshot.tool == "Edit"
+    assert result.snapshot.decision == "allow"
+    assert result.snapshot.cursor_before is not None
+    assert result.snapshot.cursor_after is not None
+    assert result.snapshot.cursor_after.row == result.snapshot.cursor_before.row
+    assert result.snapshot.cursor_after.col == result.snapshot.cursor_before.col
+    _assert_screen(result)
+
+
 # ── Deny scenarios ────────────────────────────────────────────────────────────
 
 
@@ -149,6 +176,24 @@ def test_write_deny() -> None:
     assert result.success, result.error
     assert result.snapshot is not None
     assert result.snapshot.tool == "Write"
+    assert result.snapshot.decision == "deny"
+    assert result.snapshot.cursor_before is not None
+    assert result.snapshot.cursor_after is not None
+    assert result.snapshot.cursor_after.row == result.snapshot.cursor_before.row
+    assert result.snapshot.cursor_after.col == result.snapshot.cursor_before.col
+    _assert_screen(result)
+
+
+def test_edit_deny() -> None:
+    result = run_scenario(
+        SCENARIOS["edit_deny"],
+        terminal=Terminal.TMUX,
+        size=TerminalSize(cols=120, rows=40),
+        wrapper="verp",
+    )
+    assert result.success, result.error
+    assert result.snapshot is not None
+    assert result.snapshot.tool == "Edit"
     assert result.snapshot.decision == "deny"
     assert result.snapshot.cursor_before is not None
     assert result.snapshot.cursor_after is not None
@@ -179,20 +224,17 @@ def test_bash_single_deny() -> None:
 
 
 @pytest.mark.parametrize(
-    "cols,rows",
-    [
-        (80, 24),
-        (120, 30),
-        (200, 50),
-        (60, 20),
-    ],
-    ids=["80x24", "120x30", "200x50", "60x20"],
+    "cols",
+    [80, 120, 200, 60],
+    ids=["80", "120", "200", "60"],
 )
-def test_write_allow_sizes(cols: int, rows: int) -> None:
+def test_write_allow_sizes(cols: int) -> None:
+    # Rows fixed at 40 so n=1 regardless of cols: the full Claude preview is
+    # preserved and the same expected_screen_dialog applies at every width.
     result = run_scenario(
         SCENARIOS["write_allow"],
         terminal=Terminal.TMUX,
-        size=TerminalSize(cols=cols, rows=rows),
+        size=TerminalSize(cols=cols, rows=40),
         wrapper="verp",
     )
     assert result.success, result.error
@@ -200,7 +242,7 @@ def test_write_allow_sizes(cols: int, rows: int) -> None:
     assert result.snapshot.tool == "Write"
     assert result.snapshot.decision == "allow"
     assert result.snapshot.terminal_cols == cols
-    assert result.snapshot.terminal_rows == rows
+    assert result.snapshot.terminal_rows == 40
     assert result.snapshot.cursor_before is not None
     assert result.snapshot.cursor_after is not None
     assert result.snapshot.cursor_after.row == result.snapshot.cursor_before.row
