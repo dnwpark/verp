@@ -224,17 +224,20 @@ def test_bash_single_deny() -> None:
 
 
 @pytest.mark.parametrize(
-    "cols",
-    [80, 120, 200, 60],
-    ids=["80", "120", "200", "60"],
+    "cols,rows",
+    [
+        (80, 24),
+        (120, 30),
+        (200, 50),
+        (60, 20),
+    ],
+    ids=["80x24", "120x30", "200x50", "60x20"],
 )
-def test_write_allow_sizes(cols: int) -> None:
-    # Rows fixed at 40 so n=1 regardless of cols: the full Claude preview is
-    # preserved and the same expected_screen_dialog applies at every width.
+def test_write_allow_sizes(cols: int, rows: int) -> None:
     result = run_scenario(
         SCENARIOS["write_allow"],
         terminal=Terminal.TMUX,
-        size=TerminalSize(cols=cols, rows=40),
+        size=TerminalSize(cols=cols, rows=rows),
         wrapper="verp",
     )
     assert result.success, result.error
@@ -242,7 +245,7 @@ def test_write_allow_sizes(cols: int) -> None:
     assert result.snapshot.tool == "Write"
     assert result.snapshot.decision == "allow"
     assert result.snapshot.terminal_cols == cols
-    assert result.snapshot.terminal_rows == 40
+    assert result.snapshot.terminal_rows == rows
     assert result.snapshot.cursor_before is not None
     assert result.snapshot.cursor_after is not None
     assert result.snapshot.cursor_after.row == result.snapshot.cursor_before.row

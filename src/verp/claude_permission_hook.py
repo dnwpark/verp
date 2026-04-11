@@ -224,13 +224,24 @@ def _show_permission_dialog(
     _original_col = _pos_before_scroll.col if _pos_before_scroll else 1
 
     n = _claude_dialog_lines(tool, tool_input)
-    # For Write/Edit, Claude renders a content/diff preview above its footer.
-    # Reduce n to preserve that preview: n=1 keeps it all, but the dialog
-    # needs 7 rows below the scroll position.  Increase n only enough to fit.
-    # Falls back to the full n=7 when cursor position is unavailable.
     term_rows, _ = _terminal_size()
+    deficit = 0
     if _pos_before_scroll and tool in ("Write", "Edit", "MultiEdit"):
-        n = max(1, _pos_before_scroll.row + 7 - term_rows)
+        # For Write/Edit, keep n=1 to preserve Claude's native preview.
+        # If the dialog (7 rows) wouldn't fit below the cursor, pre-scroll
+        # the terminal first: move to the bottom row and emit the deficit
+        # as newlines — each causes one scroll-up — then reposition the
+        # cursor at option 1's new (shifted-up) location.
+        deficit = max(0, _pos_before_scroll.row + 7 - term_rows)
+        if deficit > 0:
+            old_row = _pos_before_scroll.row
+            os.write(stdout_fd, f"\x1b[{term_rows};1H".encode())
+            os.write(stdout_fd, b"\n" * deficit)
+            new_row = old_row - deficit
+            # CUP (\x1b[row;colH) sets both row and column.
+            os.write(stdout_fd, f"\x1b[{new_row};{_original_col}H".encode())
+            _pos_before_scroll = _query_cursor_pos(stdin_fd)
+        n = 1
     os.write(stdout_fd, f"\x1b[{n}A\r\x1b[J".encode())
     cursor_start = _query_cursor_pos(stdin_fd)
     os.write(
@@ -242,13 +253,15 @@ def _show_permission_dialog(
     os.write(stdout_fd, " \x1b[2mEsc to cancel\x1b[0m\r\n".encode())
 
     def _clear_dialog() -> None:
-        # Clear verp dialog lines and return cursor to row R (the jump target).
+        # Clear verp dialog lines and return cursor to where Claude left it.
         # Layout: question_lines + blank(1) + options_display_lines + esc(1).
         dialog_lines = question_lines + 1 + options_display_lines + 1
         os.write(stdout_fd, b"\x1b[1A\r\x1b[K" * dialog_lines + b"\x1b[1A")
-        # Restore cursor to C_end where Claude expects it (R + n).
-        if n > 0:
-            os.write(stdout_fd, f"\x1b[{n}B".encode())
+        # Move down by n (dialog scroll) + deficit (pre-scroll) to land back
+        # at the original cursor position (option 1 before any scrolling).
+        restore = n + deficit
+        if restore > 0:
+            os.write(stdout_fd, f"\x1b[{restore}B".encode())
         # Restore the original column (\r in the erase sequence left us at col 1).
         os.write(stdout_fd, f"\x1b[{_original_col}G".encode())
         termios.tcflush(stdin_fd, termios.TCIFLUSH)
