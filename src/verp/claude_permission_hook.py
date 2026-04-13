@@ -172,10 +172,6 @@ def _claude_dialog_lines(tool: str, tool_input: dict[str, str]) -> int:
         command = tool_input.get("command", "")
         # Claude's dialog: "Bash command" header (1) + blank (1)
         header = 2
-        # Footer: blank + question + 3 options + blank + Esc = 7 lines.
-        # When the command has newlines, Claude adds a warning (+ blank before
-        # and after it), growing the footer by 2.
-        footer = 9 if "\n" in command else 7
         # Each physical line in the command is displayed with a 3-space indent
         # and wraps at (cols - 3) characters.
         cols_avail = max(cols - 3, 1)
@@ -183,6 +179,10 @@ def _claude_dialog_lines(tool: str, tool_input: dict[str, str]) -> int:
             max(1, (len(line) + cols_avail - 1) // cols_avail)
             for line in command.split("\n")
         )
+        # Footer: blank + question + 3 options + blank + Esc = 7 lines.
+        # When the command has newlines, Claude adds a warning (+ blank before
+        # and after it), growing the footer by 2.
+        footer = 9 if "\n" in command else 7
         return header + cmd_display + footer
 
     # Non-Bash footer: question + 3 options + blank + Esc + blank = 7 lines.
@@ -242,6 +242,9 @@ def _show_permission_dialog(
             os.write(stdout_fd, f"\x1b[{new_row};{_original_col}H".encode())
             _pos_before_scroll = _query_cursor_pos(stdin_fd)
         n = 1
+    # Never scroll above the top of the terminal (row 1).
+    if _pos_before_scroll:
+        n = min(n, _pos_before_scroll.row - 1)
     os.write(stdout_fd, f"\x1b[{n}A\r\x1b[J".encode())
     cursor_start = _query_cursor_pos(stdin_fd)
     os.write(

@@ -167,35 +167,37 @@ _EDIT_REPLACE_ALL_SCREEN_DIALOG = """\
 # "User rejected" (Claude's tool denial).
 
 _WRITE_ALLOW_AFTER = """\
-❯ write 'hello' to{any}
+❯ {[write 'hello' to {tmp}/hello.txt]}{any}
   ⎿ \xa0Allowed by PermissionRequest hook"""
 
 _WRITE_DENY_AFTER = """\
-❯ write 'hello' to{any}
+❯ {[write 'hello' to {tmp}/hello.txt]}{any}
   ⎿ \xa0User rejected"""
 
 _BASH_SINGLE_ALLOW_AFTER = """\
-❯ echo hello >{any}
+❯ {[echo hello > {tmp}/hello.txt]}{any}
   ⎿ \xa0Allowed by PermissionRequest hook"""
 
 _BASH_SINGLE_DENY_AFTER = """\
-❯ echo hello >{any}
-     Interrupted"""
+❯ {[echo hello > {tmp}/hello.txt]}
+
+{(⏺|⏺ {[Bash(echo hello > {tmp}/hello.txt)]})}
+{(     |  ⎿ \xa0)}Interrupted"""
 
 _BASH_MULTILINE_ALLOW_AFTER = """\
-❯ run in a single step{any}
+❯ {[run in a single step, commands with newlines, no && or ;]}{any}
   ⎿ \xa0Allowed by PermissionRequest hook"""
 
 _EDIT_ALLOW_AFTER = """\
-❯ edit {tmp}/greet.py{any}
+❯ {[edit {tmp}/greet.py]}{any}
   ⎿ \xa0Allowed by PermissionRequest hook"""
 
 _EDIT_DENY_AFTER = """\
-❯ edit {tmp}/greet.py{any}
+❯ {[edit {tmp}/greet.py]}{any}
   ⎿ \xa0User rejected"""
 
 _EDIT_REPLACE_ALL_AFTER = """\
-❯ in {tmp}/greet.py{any}
+❯ {[in {tmp}/greet.py]}{any}
   ⎿ \xa0Allowed by PermissionRequest hook"""
 
 SCENARIOS: dict[str, Scenario] = {
@@ -313,31 +315,63 @@ def normalize_screen(screen: str, tmp_dir: str) -> str:
     tmux capture-pane -p pads every line with spaces to the terminal width.
     Stripping trailing whitespace per line makes comparisons terminal-width-agnostic.
     Leading whitespace is preserved — it is meaningful in verp's dialog rendering.
-    """
-    replaced = screen.replace(tmp_dir, "{tmp}")
-    return "\n".join(line.rstrip() for line in replaced.split("\n"))
 
-
-def match_with_wildcards(screen: str, expected: str) -> bool:
-    """Return True if *expected* matches *screen*.
-
-    The expected string is compiled into a regex:
-    - ``{any}``  — matches any content (``[\\s\\S]*?``, non-greedy)
-    - ``{...}``    — matches a full line of ``╌`` characters (``╌+``)
-    - everything else is matched literally (including ``{tmp}``)
+    At narrow terminal widths, long paths are hard-wrapped by tmux, splitting
+    tmp_dir across two lines.  A regex with optional (newline + indent) between
+    every character handles this so {tmp} is always substituted correctly.
     """
     import re
 
-    parts = re.split(r"(\{any\}|\{\.\.\.})", expected)
+    # Allow tmp_dir to match even when tmux wraps it mid-path.
+    wrap = r"(?:\n[ \t]*)?"
+    pattern = wrap.join(re.escape(c) for c in tmp_dir)
+    replaced = re.sub(pattern, "{tmp}", screen)
+    return "\n".join(line.rstrip() for line in replaced.split("\n"))
+
+
+def _build_pattern(s: str) -> str:
+    """Compile an expected string into a regex pattern.
+
+    Tokens:
+    - ``{any}``      — ``[\\s\\S]*?`` (non-greedy wildcard)
+    - ``{...}``      — ``╌+`` (separator line)
+    - ``{[text]}``   — spaces become ``( |\\n *)`` (text that may line-wrap)
+    - ``{(a|b)}``    — alternation; each branch is compiled recursively so
+                       it may itself contain ``{[...]}`` tokens
+    - everything else — matched literally via ``re.escape``
+    """
+    import re
+
+    # {(a|b)}: allow } inside (e.g. in {tmp}), terminate only on )}
+    # {[text]}: inner text may not contain ]
+    parts = re.split(
+        r"(\{any\}|\{\.\.\.}|\{\[[^\]]*\]\}|\{\((?:[^)]|\)(?!\}))*\)\})", s
+    )
     pattern = ""
     for part in parts:
         if part == "{any}":
             pattern += r"[\s\S]*?"
         elif part == "{...}":
             pattern += r"╌+"
+        elif part.startswith("{[") and part.endswith("]}"):
+            pieces = part[2:-2].split(" ")
+            pattern += r"( |\n *)".join(re.escape(p) for p in pieces)
+        elif part.startswith("{(") and part.endswith(")}"):
+            # Alternatives are compiled recursively so they may contain {[...]}
+            branches = part[2:-2].split("|")
+            pattern += (
+                "(?:" + "|".join(_build_pattern(b) for b in branches) + ")"
+            )
         else:
             pattern += re.escape(part)
-    return bool(re.search(pattern, screen, re.DOTALL))
+    return pattern
+
+
+def match_with_wildcards(screen: str, expected: str) -> bool:
+    """Return True if *expected* matches *screen*."""
+    import re
+
+    return bool(re.search(_build_pattern(expected), screen, re.DOTALL))
 
 
 # ── Terminal detection ────────────────────────────────────────────────────────

@@ -14,12 +14,16 @@ import pytest
 
 from tests.dialog_runner import (
     SCENARIOS,
+    SIZES,
     Terminal,
     TerminalSize,
     match_with_wildcards,
     normalize_screen,
     run_scenario,
 )
+
+_SIZE_PARAMS = [(s.cols, s.rows) for s in SIZES]
+_SIZE_IDS = [f"{s.cols}x{s.rows}" for s in SIZES]
 
 
 @pytest.fixture(autouse=True)
@@ -41,8 +45,11 @@ def _assert_screen(result: object) -> None:
     # ── screen_dialog ─────────────────────────────────────────────────────────
 
     # Must not be Claude's native dialog (which uses "·" in its footer).
+    # Check only the visible portion (last rows lines) — tmux scrollback may
+    # retain Claude's old dialog content even after verp clears the screen.
+    visible_dialog = "\n".join(norm_dialog.splitlines()[-result.size.rows :])
     assert (
-        "Esc to cancel ·" not in norm_dialog
+        "Esc to cancel ·" not in visible_dialog
     ), "showing Claude dialog, not verp"
 
     # The user's prompt line must be visible in the scrollback.
@@ -79,6 +86,32 @@ def _assert_screen(result: object) -> None:
     )
 
 
+def _run_scenario_test(
+    scenario_name: str,
+    tool: str,
+    decision: str,
+    cols: int,
+    rows: int,
+) -> None:
+    result = run_scenario(
+        SCENARIOS[scenario_name],
+        terminal=Terminal.TMUX,
+        size=TerminalSize(cols=cols, rows=rows),
+        wrapper="verp",
+    )
+    assert result.success, result.error
+    assert result.snapshot is not None
+    assert result.snapshot.tool == tool
+    assert result.snapshot.decision == decision
+    assert result.snapshot.terminal_cols == cols
+    assert result.snapshot.terminal_rows == rows
+    assert result.snapshot.cursor_before is not None
+    assert result.snapshot.cursor_after is not None
+    assert result.snapshot.cursor_after.row == result.snapshot.cursor_before.row
+    assert result.snapshot.cursor_after.col == result.snapshot.cursor_before.col
+    _assert_screen(result)
+
+
 pytestmark = [
     pytest.mark.skipif(
         shutil.which("claude") is None, reason="claude CLI not found"
@@ -87,167 +120,41 @@ pytestmark = [
 ]
 
 
-# ── Allow scenarios ───────────────────────────────────────────────────────────
+@pytest.mark.parametrize("cols,rows", _SIZE_PARAMS, ids=_SIZE_IDS)
+def test_write_allow(cols: int, rows: int) -> None:
+    _run_scenario_test("write_allow", "Write", "allow", cols, rows)
 
 
-def test_write_allow() -> None:
-    result = run_scenario(
-        SCENARIOS["write_allow"],
-        terminal=Terminal.TMUX,
-        size=TerminalSize(cols=120, rows=30),
-        wrapper="verp",
-    )
-    assert result.success, result.error
-    assert result.snapshot is not None
-    assert result.snapshot.tool == "Write"
-    assert result.snapshot.decision == "allow"
-    assert result.snapshot.cursor_before is not None
-    assert result.snapshot.cursor_after is not None
-    assert result.snapshot.cursor_after.row == result.snapshot.cursor_before.row
-    assert result.snapshot.cursor_after.col == result.snapshot.cursor_before.col
-    _assert_screen(result)
+@pytest.mark.parametrize("cols,rows", _SIZE_PARAMS, ids=_SIZE_IDS)
+def test_write_deny(cols: int, rows: int) -> None:
+    _run_scenario_test("write_deny", "Write", "deny", cols, rows)
 
 
-def test_bash_single_allow() -> None:
-    result = run_scenario(
-        SCENARIOS["bash_single_allow"],
-        terminal=Terminal.TMUX,
-        size=TerminalSize(cols=120, rows=30),
-        wrapper="verp",
-    )
-    assert result.success, result.error
-    assert result.snapshot is not None
-    assert result.snapshot.tool == "Bash"
-    assert result.snapshot.decision == "allow"
-    assert result.snapshot.cursor_before is not None
-    assert result.snapshot.cursor_after is not None
-    assert result.snapshot.cursor_after.row == result.snapshot.cursor_before.row
-    assert result.snapshot.cursor_after.col == result.snapshot.cursor_before.col
-    _assert_screen(result)
+@pytest.mark.parametrize("cols,rows", _SIZE_PARAMS, ids=_SIZE_IDS)
+def test_bash_single_allow(cols: int, rows: int) -> None:
+    _run_scenario_test("bash_single_allow", "Bash", "allow", cols, rows)
 
 
-def test_edit_allow() -> None:
-    # 40 rows so n=1: both ╌╌╌ separators in Claude's preview stay visible.
-    result = run_scenario(
-        SCENARIOS["edit_allow"],
-        terminal=Terminal.TMUX,
-        size=TerminalSize(cols=120, rows=40),
-        wrapper="verp",
-    )
-    assert result.success, result.error
-    assert result.snapshot is not None
-    assert result.snapshot.tool == "Edit"
-    assert result.snapshot.decision == "allow"
-    assert result.snapshot.cursor_before is not None
-    assert result.snapshot.cursor_after is not None
-    assert result.snapshot.cursor_after.row == result.snapshot.cursor_before.row
-    assert result.snapshot.cursor_after.col == result.snapshot.cursor_before.col
-    _assert_screen(result)
+@pytest.mark.parametrize("cols,rows", _SIZE_PARAMS, ids=_SIZE_IDS)
+def test_bash_single_deny(cols: int, rows: int) -> None:
+    _run_scenario_test("bash_single_deny", "Bash", "deny", cols, rows)
 
 
-def test_edit_replace_all() -> None:
-    result = run_scenario(
-        SCENARIOS["edit_replace_all"],
-        terminal=Terminal.TMUX,
-        size=TerminalSize(cols=120, rows=40),
-        wrapper="verp",
-    )
-    assert result.success, result.error
-    assert result.snapshot is not None
-    assert result.snapshot.tool == "Edit"
-    assert result.snapshot.decision == "allow"
-    assert result.snapshot.cursor_before is not None
-    assert result.snapshot.cursor_after is not None
-    assert result.snapshot.cursor_after.row == result.snapshot.cursor_before.row
-    assert result.snapshot.cursor_after.col == result.snapshot.cursor_before.col
-    _assert_screen(result)
+@pytest.mark.parametrize("cols,rows", _SIZE_PARAMS, ids=_SIZE_IDS)
+def test_bash_multiline(cols: int, rows: int) -> None:
+    _run_scenario_test("bash_multiline", "Bash", "allow", cols, rows)
 
 
-# ── Deny scenarios ────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("cols,rows", _SIZE_PARAMS, ids=_SIZE_IDS)
+def test_edit_allow(cols: int, rows: int) -> None:
+    _run_scenario_test("edit_allow", "Edit", "allow", cols, rows)
 
 
-def test_write_deny() -> None:
-    result = run_scenario(
-        SCENARIOS["write_deny"],
-        terminal=Terminal.TMUX,
-        size=TerminalSize(cols=120, rows=30),
-        wrapper="verp",
-    )
-    assert result.success, result.error
-    assert result.snapshot is not None
-    assert result.snapshot.tool == "Write"
-    assert result.snapshot.decision == "deny"
-    assert result.snapshot.cursor_before is not None
-    assert result.snapshot.cursor_after is not None
-    assert result.snapshot.cursor_after.row == result.snapshot.cursor_before.row
-    assert result.snapshot.cursor_after.col == result.snapshot.cursor_before.col
-    _assert_screen(result)
+@pytest.mark.parametrize("cols,rows", _SIZE_PARAMS, ids=_SIZE_IDS)
+def test_edit_deny(cols: int, rows: int) -> None:
+    _run_scenario_test("edit_deny", "Edit", "deny", cols, rows)
 
 
-def test_edit_deny() -> None:
-    result = run_scenario(
-        SCENARIOS["edit_deny"],
-        terminal=Terminal.TMUX,
-        size=TerminalSize(cols=120, rows=40),
-        wrapper="verp",
-    )
-    assert result.success, result.error
-    assert result.snapshot is not None
-    assert result.snapshot.tool == "Edit"
-    assert result.snapshot.decision == "deny"
-    assert result.snapshot.cursor_before is not None
-    assert result.snapshot.cursor_after is not None
-    assert result.snapshot.cursor_after.row == result.snapshot.cursor_before.row
-    assert result.snapshot.cursor_after.col == result.snapshot.cursor_before.col
-    _assert_screen(result)
-
-
-def test_bash_single_deny() -> None:
-    result = run_scenario(
-        SCENARIOS["bash_single_deny"],
-        terminal=Terminal.TMUX,
-        size=TerminalSize(cols=120, rows=30),
-        wrapper="verp",
-    )
-    assert result.success, result.error
-    assert result.snapshot is not None
-    assert result.snapshot.tool == "Bash"
-    assert result.snapshot.decision == "deny"
-    assert result.snapshot.cursor_before is not None
-    assert result.snapshot.cursor_after is not None
-    assert result.snapshot.cursor_after.row == result.snapshot.cursor_before.row
-    assert result.snapshot.cursor_after.col == result.snapshot.cursor_before.col
-    _assert_screen(result)
-
-
-# ── Terminal size variants ────────────────────────────────────────────────────
-
-
-@pytest.mark.parametrize(
-    "cols,rows",
-    [
-        (80, 24),
-        (120, 30),
-        (200, 50),
-        (60, 20),
-    ],
-    ids=["80x24", "120x30", "200x50", "60x20"],
-)
-def test_write_allow_sizes(cols: int, rows: int) -> None:
-    result = run_scenario(
-        SCENARIOS["write_allow"],
-        terminal=Terminal.TMUX,
-        size=TerminalSize(cols=cols, rows=rows),
-        wrapper="verp",
-    )
-    assert result.success, result.error
-    assert result.snapshot is not None
-    assert result.snapshot.tool == "Write"
-    assert result.snapshot.decision == "allow"
-    assert result.snapshot.terminal_cols == cols
-    assert result.snapshot.terminal_rows == rows
-    assert result.snapshot.cursor_before is not None
-    assert result.snapshot.cursor_after is not None
-    assert result.snapshot.cursor_after.row == result.snapshot.cursor_before.row
-    assert result.snapshot.cursor_after.col == result.snapshot.cursor_before.col
-    _assert_screen(result)
+@pytest.mark.parametrize("cols,rows", _SIZE_PARAMS, ids=_SIZE_IDS)
+def test_edit_replace_all(cols: int, rows: int) -> None:
+    _run_scenario_test("edit_replace_all", "Edit", "allow", cols, rows)
