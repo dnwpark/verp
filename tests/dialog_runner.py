@@ -182,39 +182,104 @@ _EDIT_REPLACE_ALL_SCREEN_DIALOG = (
 # Bash deny uses "Interrupted" (verp's Ctrl+C); Write/Edit deny uses
 # "User rejected" (Claude's tool denial).
 
-_WRITE_ALLOW_AFTER = """\
-❯ {[write 'hello' to {tmp}/hello.txt]}{any}
-  ⎿ \xa0Allowed by PermissionRequest hook"""
+_WRITE_ALLOW_AFTER = (
+    "❯ {[write 'hello' to {tmp}/hello.txt]}\n"
+    # At 120x30/200x50 the tool output is clean and predictable;
+    # at 80x24 the pre-scroll garbles it so {any} is the fallback.
+    "{(\n"
+    "⏺ {[Write({tmp}/hello.txt)]}\n"
+    "  ⎿ \xa0Wrote 1 lines to " + _REL_PREFIX + "{...tmp}/hello.txt\n"
+    "      1 hello\n"
+    "|{any})}"
+    "  ⎿ \xa0Allowed by PermissionRequest hook"
+)
 
-_WRITE_DENY_AFTER = """\
-❯ {[write 'hello' to {tmp}/hello.txt]}{any}
-  ⎿ \xa0User rejected"""
+_WRITE_DENY_AFTER = (
+    "❯ {[write 'hello' to {tmp}/hello.txt]}\n"
+    "{(\n"
+    "⏺ {[Write({tmp}/hello.txt)]}\n"
+    "|{any})}"
+    "  ⎿ \xa0User rejected"
+)
 
-_BASH_SINGLE_ALLOW_AFTER = """\
-❯ {[echo hello > {tmp}/hello.txt]}{any}
-  ⎿ \xa0Allowed by PermissionRequest hook"""
+_BASH_SINGLE_ALLOW_AFTER = (
+    "❯ {[echo hello > {tmp}/hello.txt]}\n"
+    "{(\n"
+    "⏺\n"
+    "     (No output)\n"
+    "|{any})}"
+    "  ⎿ \xa0Allowed by PermissionRequest hook"
+)
 
-_BASH_SINGLE_DENY_AFTER = """\
-❯ {[echo hello > {tmp}/hello.txt]}
+_BASH_SINGLE_DENY_AFTER = (
+    "❯ {[echo hello > {tmp}/hello.txt]}\n"
+    "{(\n"
+    "⏺\n"
+    "|{any})}"
+    "{(     |  ⎿ \xa0)}Interrupted"
+)
 
-{(⏺|⏺ {[Bash(echo hello > {tmp}/hello.txt)]})}
-{(     |  ⎿ \xa0)}Interrupted"""
+_BASH_MULTILINE_ALLOW_AFTER = (
+    "❯ {[run in a single step, commands with newlines, no && or ;]}\n"
+    "{(\n"
+    '⏺ {[Bash(bash -c "echo hello > {tmp}/hello.txt]}\n'
+    "\n"
+    "     (No output)\n"
+    "|{any})}"
+    "  ⎿ \xa0Allowed by PermissionRequest hook"
+)
 
-_BASH_MULTILINE_ALLOW_AFTER = """\
-❯ {[run in a single step, commands with newlines, no && or ;]}{any}
-  ⎿ \xa0Allowed by PermissionRequest hook"""
+_EDIT_ALLOW_AFTER = (
+    '❯ {[edit {tmp}/greet.py to change "world" to "verp"]}\n'
+    "{(\n"
+    "  Read 1 file (ctrl+o to expand)\n"
+    "  ⎿ \xa0Allowed by PermissionRequest hook\n"
+    "\n"
+    "⏺ Update({tmp}/greet.py)\n"
+    "  ⎿ \xa0Added 1 line, removed 1 line\n"
+    "      1  def greet():\n"
+    '      2 -    name = "world"\n'
+    '      2 +    name = "verp"\n'
+    '      3      print(f"hello, {name}")\n'
+    "      4      return name\n"
+    "|{any})}"
+    "  ⎿ \xa0Allowed by PermissionRequest hook"
+)
 
-_EDIT_ALLOW_AFTER = """\
-❯ {[edit {tmp}/greet.py]}{any}
-  ⎿ \xa0Allowed by PermissionRequest hook"""
+_EDIT_DENY_AFTER = (
+    '❯ {[edit {tmp}/greet.py to change "world" to "verp"]}\n'
+    "{(\n"
+    "  Read 1 file (ctrl+o to expand)\n"
+    "  ⎿ \xa0Allowed by PermissionRequest hook\n"
+    "\n"
+    "⏺ Update({tmp}/greet.py)\n"
+    "  ⎿ \xa0User rejected update to " + _REL_PREFIX + "{tmp}/greet.py\n"
+    "      1  def greet():\n"
+    '      2 -    name = "world"\n'
+    '      2 +    name = "verp"\n'
+    '      3      print(f"hello, {name}")\n'
+    "      4      return name"
+    "|{any}  ⎿ \xa0User rejected)}"
+)
 
-_EDIT_DENY_AFTER = """\
-❯ {[edit {tmp}/greet.py]}{any}
-  ⎿ \xa0User rejected"""
-
-_EDIT_REPLACE_ALL_AFTER = """\
-❯ {[in {tmp}/greet.py]}{any}
-  ⎿ \xa0Allowed by PermissionRequest hook"""
+_EDIT_REPLACE_ALL_AFTER = (
+    '❯ {[in {tmp}/greet.py, replace ALL occurrences of the variable name "name" with "NAME" using replace_all=true]}\n'
+    "{(\n"
+    "  Read 1 file (ctrl+o to expand)\n"
+    "  ⎿ \xa0Allowed by PermissionRequest hook\n"
+    "\n"
+    "⏺ Update({tmp}/greet.py)\n"
+    "  ⎿ \xa0Added 3 lines, removed 3 lines\n"
+    "      1  def greet():\n"
+    '      2 -    name = "world"\n'
+    '      3 -    print(f"hello, {name}")\n'
+    "      4 -    return name\n"
+    '      2 +    NAME = "world"\n'
+    '      3 +    print(f"hello, {NAME}")\n'
+    "      4 +    return NAME\n"
+    "|{any})}"
+    "  ⎿ \xa0Allowed by PermissionRequest hook"
+)
 
 SCENARIOS: dict[str, Scenario] = {
     s.name: s
