@@ -62,7 +62,7 @@ def _assert_screen(result: object) -> None:
     # Combined check: Claude's native preview (if any) + verp's dialog footer.
     # {tmp} is normalised, {any} is a wildcard.
     assert match_with_wildcards(
-        norm_dialog, result.scenario.expected_screen_dialog
+        norm_dialog, result.scenario.expected_screen_dialog, result.tmp_dir
     ), (
         f"Screen dialog not matched.\n"
         f"Expected (with wildcards):\n{result.scenario.expected_screen_dialog!r}\n"

@@ -21,10 +21,17 @@ import tempfile
 import time
 from dataclasses import dataclass
 from enum import StrEnum
+
 from pathlib import Path
 from typing import Literal
 
 from verp.debug import CursorPosition, PermissionSnapshot
+
+# Relative path from CWD to the filesystem root, used to match the path line
+# in Claude's native Write/Edit preview (e.g. "../../../..{tmp}/hello.txt").
+_CWD_DEPTH = len([p for p in os.getcwd().split("/") if p])
+_REL_PREFIX = "/".join([".."] * _CWD_DEPTH)  # e.g. "../../../.."
+
 
 # ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -88,20 +95,25 @@ _GREET_PY = 'def greet():\n    name = "world"\n    print(f"hello, {name}")\n    
 # (alias for {any} — the bottom one may be erased when verp needs extra
 # scroll room).  {any} covers variable parts (path, context lines).
 # For Bash: verp erases the full native dialog, so no preview is checked.
+#
+# Path line ({...tmp}): at wide terminals the full _REL_PREFIX relative path
+# is shown; at narrow ones Claude truncates to "…" followed by a partial path
+# (sometimes still containing {tmp} if normalization reached it, sometimes not).
 
-_WRITE_SCREEN_DIALOG = """\
- Create file
-{any}hello.txt
-{...}
-  1 hello
-{...}
-
- Write hello.txt?
-
- ❯ 1. Yes
-   2. {any}
-   3. No
- Esc to cancel"""
+_WRITE_SCREEN_DIALOG = (
+    " Create file\n"
+    "{( " + _REL_PREFIX + "{tmp}/hello.txt| …{...tmp}/hello.txt)}\n"
+    "{...}\n"
+    "  1 hello\n"
+    "{...}\n"
+    "\n"
+    " Write hello.txt?\n"
+    "\n"
+    " ❯ 1. Yes\n"
+    "   2. {any}\n"
+    "   3. No\n"
+    " Esc to cancel"
+)
 
 _BASH_SINGLE_SCREEN_DIALOG = """\
  Run: echo hello > {tmp}/hello.txt
@@ -120,45 +132,49 @@ echo world > {tmp}/world.txt"
    3. No
  Esc to cancel"""
 
-_EDIT_SCREEN_DIALOG = """\
- Edit file
-{any}greet.py
-{any}
-{...}
- 1  def greet():
- 2 -    name = "world"
- 2 +    name = "verp"
- 3      print(f"hello, {name}")
- 4      return name
-{...}
+_EDIT_SCREEN_DIALOG = (
+    " Edit file\n"
+    "{( " + _REL_PREFIX + "{tmp}/greet.py| …{...tmp}/greet.py)}\n"
+    "{[ This will modify /private{tmp}/greet.py (outside working directory) via a symlink]}\n"
+    "\n"
+    "{...}\n"
+    " 1  def greet():\n"
+    ' 2 -    name = "world"\n'
+    ' 2 +    name = "verp"\n'
+    ' 3      print(f"hello, {name}")\n'
+    " 4      return name\n"
+    "{...}\n"
+    "\n"
+    " Edit greet.py?\n"
+    "\n"
+    " ❯ 1. Yes\n"
+    "   2. {any}\n"
+    "   3. No\n"
+    " Esc to cancel"
+)
 
- Edit greet.py?
-
- ❯ 1. Yes
-   2. {any}
-   3. No
- Esc to cancel"""
-
-_EDIT_REPLACE_ALL_SCREEN_DIALOG = """\
- Edit file
-{any}greet.py
-{any}
-{...}
- 1  def greet():
- 2 -    name = "world"
- 3 -    print(f"hello, {name}")
- 4 -    return name
- 2 +    NAME = "world"
- 3 +    print(f"hello, {NAME}")
- 4 +    return NAME
-{...}
-
- Edit greet.py? (replace all)
-
- ❯ 1. Yes
-   2. {any}
-   3. No
- Esc to cancel"""
+_EDIT_REPLACE_ALL_SCREEN_DIALOG = (
+    " Edit file\n"
+    "{( " + _REL_PREFIX + "{tmp}/greet.py| …{...tmp}/greet.py)}\n"
+    "{[ This will modify /private{tmp}/greet.py (outside working directory) via a symlink]}\n"
+    "\n"
+    "{...}\n"
+    " 1  def greet():\n"
+    ' 2 -    name = "world"\n'
+    ' 3 -    print(f"hello, {name}")\n'
+    " 4 -    return name\n"
+    ' 2 +    NAME = "world"\n'
+    ' 3 +    print(f"hello, {NAME}")\n'
+    " 4 +    return NAME\n"
+    "{...}\n"
+    "\n"
+    " Edit greet.py? (replace all)\n"
+    "\n"
+    " ❯ 1. Yes\n"
+    "   2. {any}\n"
+    "   3. No\n"
+    " Esc to cancel"
+)
 
 # ── Expected screen_after blocks ─────────────────────────────────────────────
 # Anchor on the prompt prefix (non-path, wrapping-safe), then {any} for Claude's
@@ -329,11 +345,14 @@ def normalize_screen(screen: str, tmp_dir: str) -> str:
     return "\n".join(line.rstrip() for line in replaced.split("\n"))
 
 
-def _build_pattern(s: str) -> str:
+def _build_pattern(s: str, _counter: list[int] | None = None) -> str:
     """Compile an expected string into a regex pattern.
 
-    Tokens:
+    All special tokens are wrapped in ``{}``:
     - ``{any}``      — ``[\\s\\S]*?`` (non-greedy wildcard)
+    - ``{...tmp}``   — named capture group; matched content is verified
+                       post-match to be a suffix of tmp_dir (see
+                       match_with_wildcards)
     - ``{...}``      — ``╌+`` (separator line)
     - ``{[text]}``   — spaces become ``( |\\n *)`` (text that may line-wrap)
     - ``{(a|b)}``    — alternation; each branch is compiled recursively so
@@ -342,36 +361,66 @@ def _build_pattern(s: str) -> str:
     """
     import re
 
+    if _counter is None:
+        _counter = [0]
+
     # {(a|b)}: allow } inside (e.g. in {tmp}), terminate only on )}
     # {[text]}: inner text may not contain ]
     parts = re.split(
-        r"(\{any\}|\{\.\.\.}|\{\[[^\]]*\]\}|\{\((?:[^)]|\)(?!\}))*\)\})", s
+        r"(\{any\}|\{\.\.\.tmp\}|\{\.\.\.}|\{\[[^\]]*\]\}|\{\((?:[^)]|\)(?!\}))*\)\})",
+        s,
     )
     pattern = ""
     for part in parts:
         if part == "{any}":
             pattern += r"[\s\S]*?"
+        elif part == "{...tmp}":
+            # Named capture group: optional path chars + {tmp} placeholder
+            # OR pure path chars (when normalization couldn't reach {tmp}).
+            # Post-match check (in match_with_wildcards) verifies raw fragments
+            # are actual suffixes of tmp_dir.
+            _counter[0] += 1
+            name = f"_tmp_{_counter[0]}"
+            pattern += rf"(?P<{name}>(?:[\w./\-_]*\{{tmp\}}|[\w./\-_]+))"
         elif part == "{...}":
             pattern += r"╌+"
         elif part.startswith("{[") and part.endswith("]}"):
             pieces = part[2:-2].split(" ")
             pattern += r"( |\n *)".join(re.escape(p) for p in pieces)
         elif part.startswith("{(") and part.endswith(")}"):
-            # Alternatives are compiled recursively so they may contain {[...]}
+            # Alternatives are compiled recursively, sharing the counter so
+            # named groups remain unique across the full pattern.
             branches = part[2:-2].split("|")
             pattern += (
-                "(?:" + "|".join(_build_pattern(b) for b in branches) + ")"
+                "(?:"
+                + "|".join(_build_pattern(b, _counter) for b in branches)
+                + ")"
             )
         else:
             pattern += re.escape(part)
     return pattern
 
 
-def match_with_wildcards(screen: str, expected: str) -> bool:
-    """Return True if *expected* matches *screen*."""
+def match_with_wildcards(screen: str, expected: str, tmp_dir: str = "") -> bool:
+    """Return True if *expected* matches *screen*.
+
+    Pass ``tmp_dir`` to enable post-match verification of ``{...tmp}``
+    capture groups: raw path fragments (those without ``{tmp}``) must be
+    suffixes of the actual temp-dir path.
+    """
     import re
 
-    return bool(re.search(_build_pattern(expected), screen, re.DOTALL))
+    counter: list[int] = [0]
+    pattern = _build_pattern(expected, counter)
+    m = re.search(pattern, screen, re.DOTALL)
+    if not m:
+        return False
+    if tmp_dir:
+        for key, value in m.groupdict().items():
+            if key.startswith("_tmp_") and value is not None:
+                if "{tmp}" not in value and not tmp_dir.endswith(value):
+                    return False
+    return True
 
 
 # ── Terminal detection ────────────────────────────────────────────────────────
