@@ -65,6 +65,10 @@ def _setup_socket() -> tuple[str, socket.socket]:
 
     sock_path = verp_sock_path(os.getpid())
     os.environ["VERP_SOCKET"] = sock_path
+    # Remove a stale socket file left by a previous process with the same PID.
+    # On macOS PIDs cycle, so collisions are possible after many test runs.
+    if os.path.exists(sock_path):
+        os.unlink(sock_path)
     listen_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listen_sock.bind(sock_path)
     listen_sock.listen(1)
