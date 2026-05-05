@@ -184,54 +184,48 @@ _EDIT_REPLACE_ALL_SCREEN_DIALOG = (
 
 _WRITE_ALLOW_AFTER = (
     "❯ {[write 'hello' to {tmp}/hello.txt]}\n"
-    # At 120x30/200x50 the tool output is clean and predictable;
-    # at 80x24 the pre-scroll garbles it so {any} is the fallback.
-    "{(\n"
+    "\n"
     "⏺ {[Write({tmp}/hello.txt)]}\n"
-    "  ⎿ \xa0Wrote 1 lines to " + _REL_PREFIX + "{...tmp}/hello.txt\n"
+    "  ⎿ \xa0Wrote 1 lines to " + _REL_PREFIX + "{...tmp}{[/hello.txt]}\n"
     "      1 hello\n"
-    "|{any})}"
     "  ⎿ \xa0Allowed by PermissionRequest hook"
 )
 
 _WRITE_DENY_AFTER = (
     "❯ {[write 'hello' to {tmp}/hello.txt]}\n"
-    "{(\n"
+    "\n"
     "⏺ {[Write({tmp}/hello.txt)]}\n"
-    "|{any})}"
     "  ⎿ \xa0User rejected"
 )
 
 _BASH_SINGLE_ALLOW_AFTER = (
     "❯ {[echo hello > {tmp}/hello.txt]}\n"
-    "{(\n"
-    "⏺\n"
+    "\n"
+    "⏺ {[Bash(echo hello > {tmp}/hello.txt)]}\n"
+    "\n"
     "     (No output)\n"
-    "|{any})}"
     "  ⎿ \xa0Allowed by PermissionRequest hook"
 )
 
 _BASH_SINGLE_DENY_AFTER = (
     "❯ {[echo hello > {tmp}/hello.txt]}\n"
-    "{(\n"
-    "⏺\n"
-    "|{any})}"
+    "\n"
+    "⏺ {[Bash(echo hello > {tmp}/hello.txt)]}\n"
     "{(     |  ⎿ \xa0)}Interrupted"
 )
 
 _BASH_MULTILINE_ALLOW_AFTER = (
     "❯ {[run in a single step, commands with newlines, no && or ;]}\n"
-    "{(\n"
-    '⏺ {[Bash(bash -c "echo hello > {tmp}/hello.txt]}\n'
+    "\n"
+    '⏺ {[Bash(bash -c "echo hello > {tmp}/hello.txt\necho world > {tmp}/world.txt")]}\n'
     "\n"
     "     (No output)\n"
-    "|{any})}"
     "  ⎿ \xa0Allowed by PermissionRequest hook"
 )
 
 _EDIT_ALLOW_AFTER = (
     '❯ {[edit {tmp}/greet.py to change "world" to "verp"]}\n'
-    "{(\n"
+    "\n"
     "  Read 1 file (ctrl+o to expand)\n"
     "  ⎿ \xa0Allowed by PermissionRequest hook\n"
     "\n"
@@ -242,29 +236,28 @@ _EDIT_ALLOW_AFTER = (
     '      2 +    name = "verp"\n'
     '      3      print(f"hello, {name}")\n'
     "      4      return name\n"
-    "|{any})}"
     "  ⎿ \xa0Allowed by PermissionRequest hook"
 )
 
 _EDIT_DENY_AFTER = (
     '❯ {[edit {tmp}/greet.py to change "world" to "verp"]}\n'
-    "{(\n"
+    "\n"
     "  Read 1 file (ctrl+o to expand)\n"
     "  ⎿ \xa0Allowed by PermissionRequest hook\n"
     "\n"
     "⏺ Update({tmp}/greet.py)\n"
-    "  ⎿ \xa0User rejected update to " + _REL_PREFIX + "{tmp}/greet.py\n"
+    "  ⎿ \xa0User rejected update to " + _REL_PREFIX + "{[{tmp}/greet.py]}\n"
     "      1  def greet():\n"
     '      2 -    name = "world"\n'
     '      2 +    name = "verp"\n'
     '      3      print(f"hello, {name}")\n'
-    "      4      return name"
-    "|{any}  ⎿ \xa0User rejected)}"
+    "      4      return name\n"
+    "  ⎿ \xa0User rejected"
 )
 
 _EDIT_REPLACE_ALL_AFTER = (
     '❯ {[in {tmp}/greet.py, replace ALL occurrences of the variable name "name" with "NAME" using replace_all=true]}\n'
-    "{(\n"
+    "\n"
     "  Read 1 file (ctrl+o to expand)\n"
     "  ⎿ \xa0Allowed by PermissionRequest hook\n"
     "\n"
@@ -277,7 +270,6 @@ _EDIT_REPLACE_ALL_AFTER = (
     '      2 +    NAME = "world"\n'
     '      3 +    print(f"hello, {NAME}")\n'
     "      4 +    return NAME\n"
-    "|{any})}"
     "  ⎿ \xa0Allowed by PermissionRequest hook"
 )
 
@@ -450,8 +442,10 @@ def _build_pattern(s: str, _counter: list[int] | None = None) -> str:
         elif part == "{...}":
             pattern += r"╌+"
         elif part.startswith("{[") and part.endswith("]}"):
-            pieces = part[2:-2].split(" ")
-            pattern += r"( |\n *)".join(re.escape(p) for p in pieces)
+            # Allow optional (newline + indent) between every character,
+            # handling both space-wrapping and mid-word tmux wrapping.
+            wrap = r"(?:\n[ \t]*)?"
+            pattern += wrap.join(re.escape(c) for c in part[2:-2])
         elif part.startswith("{(") and part.endswith(")}"):
             # Alternatives are compiled recursively, sharing the counter so
             # named groups remain unique across the full pattern.
@@ -560,7 +554,7 @@ _NATIVE_DIALOG_MARKER = "Esc to cancel ·"
 
 
 def _poll_for_dialog(
-    session: str, tool: str, wrapper: Wrapper, timeout: float = 60
+    session: str, tool: str, wrapper: Wrapper, timeout: float = 120
 ) -> bool:
     """Poll until the permission dialog (verp or native) is visible."""
     marker = _VERP_DIALOG_MARKER if wrapper == "verp" else _NATIVE_DIALOG_MARKER
@@ -630,6 +624,9 @@ def run_tmux(
                 success=False,
                 error="Claude did not become ready within timeout",
             )
+        # Small pause to ensure Claude's input handling is fully ready before
+        # sending the prompt.
+        time.sleep(0.5)
         # Type the prompt and submit
         subprocess.run(
             ["tmux", "send-keys", "-t", session, prompt, "Enter"],
