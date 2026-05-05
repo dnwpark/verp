@@ -13,23 +13,28 @@ class ITermFocuser:
         return self._active
 
     def focus(self, tty: str) -> bool:
+        # Wrap each window in `try`: special windows (e.g. minimized) can
+        # raise errors that would otherwise abort the script before reaching
+        # the window we want.
         script = f"""
 tell application "iTerm2"
     repeat with w in windows
-        set tabCount to count of tabs of w
-        repeat with tabIndex from 1 to tabCount
-            set t to tab tabIndex of w
-            set sessionCount to count of sessions of t
-            repeat with sessionIndex from 1 to sessionCount
-                set s to session sessionIndex of t
-                if tty of s is "{tty}" then
-                    select t
-                    set index of w to 1
-                    activate
-                    return
-                end if
+        try
+            set tabCount to count of tabs of w
+            repeat with tabIndex from 1 to tabCount
+                set t to tab tabIndex of w
+                set sessionCount to count of sessions of t
+                repeat with sessionIndex from 1 to sessionCount
+                    set s to session sessionIndex of t
+                    if tty of s is "{tty}" then
+                        select t
+                        set index of w to 1
+                        activate
+                        return
+                    end if
+                end repeat
             end repeat
-        end repeat
+        end try
     end repeat
 end tell
 """

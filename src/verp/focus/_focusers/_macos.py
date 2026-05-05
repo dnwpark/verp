@@ -2,17 +2,23 @@ import subprocess
 
 
 def _focus_via_osascript(tty: str) -> bool:
+    # Each window's tabs are enumerated in a `try` block: certain windows
+    # (e.g. minimized or special) can raise -1728 ("Can't get every tab"),
+    # which would otherwise abort the whole script before reaching the
+    # window we want.
     script = f"""
 tell application "Terminal"
     repeat with w in windows
-        repeat with t in tabs of w
-            if tty of t is "{tty}" then
-                set selected of t to true
-                set index of w to 1
-                activate
-                return
-            end if
-        end repeat
+        try
+            repeat with t in tabs of w
+                if tty of t is "{tty}" then
+                    set selected of t to true
+                    set index of w to 1
+                    activate
+                    return
+                end if
+            end repeat
+        end try
     end repeat
 end tell
 """
