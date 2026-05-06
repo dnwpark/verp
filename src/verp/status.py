@@ -121,13 +121,17 @@ def short_repo_status(repo: str, project_dir: Path, branch: str) -> str:
     if untracked:
         parts.append(f"[dark_orange]{untracked} untracked[/dark_orange]")
 
-    primary_sync = ahead_behind(f"origin/{primary}", primary, rp)
-    if primary_sync is not None:
-        p_ahead, p_behind = primary_sync
-        if p_ahead and p_behind:
-            parts.append("[red]primary out of sync[/red]")
-        elif p_behind:
-            parts.append("[grey70]needs pull[/grey70]")
+    display_primary = False
+    if display_primary:
+        primary_sync = ahead_behind(f"origin/{primary}", primary, rp)
+        if primary_sync is not None:
+            p_ahead, p_behind = primary_sync
+            if p_ahead and p_behind:
+                parts.append(f"[red]{primary} out of sync[/red]")
+            elif p_behind:
+                parts.append(f"[grey70]{primary} needs pull[/grey70]")
+            elif p_ahead:
+                parts.append(f"[grey70]{primary} needs push[/grey70]")
 
     origin_sync = ahead_behind(f"origin/{branch}", "HEAD", wt)
     if origin_sync is None:
@@ -135,9 +139,11 @@ def short_repo_status(repo: str, project_dir: Path, branch: str) -> str:
     else:
         o_ahead, o_behind = origin_sync
         if o_ahead and o_behind:
-            parts.append("[red]branch out of sync[/red]")
+            parts.append("[red]out of sync[/red]")
         elif o_ahead:
             parts.append("[grey70]needs push[/grey70]")
+        elif o_behind:
+            parts.append("[grey70]needs pull[/grey70]")
 
     if not parts:
         return "[green]up to date[/green]"
