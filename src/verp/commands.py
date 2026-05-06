@@ -51,6 +51,7 @@ from verp.status import (
     print_repo_status,
     print_untracked_repo_status,
     short_repo_status,
+    short_untracked_repo_status,
 )
 
 
@@ -374,7 +375,8 @@ def cmd_list() -> int:
             status = short_repo_status(repo, project_dir, project_info.branch)
             console.print(f"    {repo} {status}")
         for path in extra_git_dirs(project_dir, project_info.repos):
-            console.print(f"    {path.name} [grey70](untracked)[/grey70]")
+            status = short_untracked_repo_status(path)
+            console.print(f"    {path.name} {status}")
 
     return 0
 

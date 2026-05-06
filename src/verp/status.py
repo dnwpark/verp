@@ -13,19 +13,27 @@ from verp.git import (
 console = Console()
 
 
-def _branch_vs_primary_lines(wt: Path, primary: str) -> list[str]:
+def _branch_vs_primary_lines(
+    wt: Path, primary: str, *, short: bool
+) -> list[str]:
     lines = []
     sync = ahead_behind(f"origin/{primary}", "HEAD", wt)
     if sync is not None:
         ahead, behind = sync
         if ahead:
-            lines.append(
-                f"[grey70]{ahead} commit{'s' if ahead != 1 else ''} ahead of {primary}[/grey70]"
-            )
+            if short:
+                lines.append(f"[grey70]{ahead} ahead[/grey70]")
+            else:
+                lines.append(
+                    f"[grey70]{ahead} commit{'s' if ahead != 1 else ''} ahead of {primary}[/grey70]"
+                )
         if behind:
-            lines.append(
-                f"[grey70]{behind} commit{'s' if behind != 1 else ''} behind {primary}[/grey70]"
-            )
+            if short:
+                lines.append(f"[grey70]{behind} behind[/grey70]")
+            else:
+                lines.append(
+                    f"[grey70]{behind} commit{'s' if behind != 1 else ''} behind {primary}[/grey70]"
+                )
     return lines
 
 
@@ -39,30 +47,53 @@ def _uncommitted_lines(wt: Path) -> list[str]:
     return lines
 
 
-def _primary_vs_origin_lines(rp: Path, primary: str) -> list[str]:
+def _primary_vs_origin_lines(
+    rp: Path, primary: str, *, short: bool
+) -> list[str]:
     lines = []
     sync = ahead_behind(f"origin/{primary}", primary, rp)
     if sync is not None:
         ahead, behind = sync
         if ahead and behind:
-            lines.append(f"[red]{primary} is out of sync with origin[/red]")
+            if short:
+                lines.append(f"[red]{primary} out of sync[/red]")
+            else:
+                lines.append(f"[red]{primary} is out of sync with origin[/red]")
         elif behind:
-            lines.append(f"[grey70]{primary} out of date, needs pull[/grey70]")
+            if short:
+                lines.append(f"[grey70]{primary} needs pull[/grey70]")
+            else:
+                lines.append(
+                    f"[grey70]{primary} out of date, needs pull[/grey70]"
+                )
         elif ahead:
-            lines.append(f"[grey70]{primary} out of date, needs push[/grey70]")
+            if short:
+                lines.append(f"[grey70]{primary} needs push[/grey70]")
+            else:
+                lines.append(
+                    f"[grey70]{primary} out of date, needs push[/grey70]"
+                )
     return lines
 
 
-def _branch_vs_origin_lines(wt: Path, branch: str) -> list[str]:
+def _branch_vs_origin_lines(wt: Path, branch: str, *, short: bool) -> list[str]:
     sync = ahead_behind(f"origin/{branch}", "HEAD", wt)
     if sync is None:
+        if short:
+            return ["[grey70]not pushed[/grey70]"]
         return ["[grey70]branch not pushed to origin[/grey70]"]
     ahead, behind = sync
     if ahead and behind:
+        if short:
+            return ["[red]out of sync[/red]"]
         return ["[red]branch is out of sync with origin[/red]"]
     if ahead:
+        if short:
+            return ["[grey70]needs push[/grey70]"]
         return ["[grey70]branch out of date, needs push[/grey70]"]
     if behind:
+        if short:
+            return ["[grey70]needs pull[/grey70]"]
         return ["[grey70]branch out of date, needs pull[/grey70]"]
     return []
 
@@ -89,8 +120,16 @@ def print_untracked_repo_status(path: Path, indent: str = "  ") -> None:
         console.print(f"{indent}  [red]could not determine branch[/red]")
         return
     local_lines = _uncommitted_lines(path)
-    remote_lines = _branch_vs_origin_lines(path, branch)
+    remote_lines = _branch_vs_origin_lines(path, branch, short=False)
     _print_status_lines(local_lines, remote_lines, indent)
+
+
+def _format_short(parts: list[str], tracked: bool) -> str:
+    if not parts:
+        parts += ["[green]up to date[/green]"]
+    if not tracked:
+        parts += ["[grey70]untracked[/grey70]"]
+    return "(" + ", ".join(parts) + ")"
 
 
 def short_repo_status(repo: str, project_dir: Path, branch: str) -> str:
@@ -106,48 +145,24 @@ def short_repo_status(repo: str, project_dir: Path, branch: str) -> str:
         return "[red](primary branch unknown)[/red]"
 
     parts: list[str] = []
+    parts += _branch_vs_primary_lines(wt, primary, short=True)
+    parts += _uncommitted_lines(wt)
+    parts += _branch_vs_origin_lines(wt, branch, short=True)
+    return _format_short(parts, True)
 
-    branch_sync = ahead_behind(f"origin/{primary}", "HEAD", wt)
-    if branch_sync is not None:
-        ahead, behind = branch_sync
-        if ahead:
-            parts.append(f"[grey70]{ahead} ahead[/grey70]")
-        if behind:
-            parts.append(f"[grey70]{behind} behind[/grey70]")
 
-    changed, untracked = worktree_changes(wt)
-    if changed:
-        parts.append(f"[dark_orange]{changed} modified[/dark_orange]")
-    if untracked:
-        parts.append(f"[dark_orange]{untracked} untracked[/dark_orange]")
+def short_untracked_repo_status(path: Path) -> str:
+    """Return a compact one-line rich-markup status string for an untracked
+    git subdir of a project. Same signals as `short_repo_status` with
+    'untracked' appended."""
+    branch = current_branch(path)
+    if branch is None:
+        return "[red](branch unknown)[/red]"
 
-    display_primary = False
-    if display_primary:
-        primary_sync = ahead_behind(f"origin/{primary}", primary, rp)
-        if primary_sync is not None:
-            p_ahead, p_behind = primary_sync
-            if p_ahead and p_behind:
-                parts.append(f"[red]{primary} out of sync[/red]")
-            elif p_behind:
-                parts.append(f"[grey70]{primary} needs pull[/grey70]")
-            elif p_ahead:
-                parts.append(f"[grey70]{primary} needs push[/grey70]")
-
-    origin_sync = ahead_behind(f"origin/{branch}", "HEAD", wt)
-    if origin_sync is None:
-        parts.append("[grey70]not pushed[/grey70]")
-    else:
-        o_ahead, o_behind = origin_sync
-        if o_ahead and o_behind:
-            parts.append("[red]out of sync[/red]")
-        elif o_ahead:
-            parts.append("[grey70]needs push[/grey70]")
-        elif o_behind:
-            parts.append("[grey70]needs pull[/grey70]")
-
-    if not parts:
-        return "[green]up to date[/green]"
-    return "(" + ", ".join(parts) + ")"
+    parts: list[str] = []
+    parts += _uncommitted_lines(path)
+    parts += _branch_vs_origin_lines(path, branch, short=True)
+    return _format_short(parts, False)
 
 
 def print_repo_status(
@@ -166,8 +181,10 @@ def print_repo_status(
         console.print(f"{indent}  [red]primary branch unknown[/red]")
         return
 
-    local_lines = _branch_vs_primary_lines(wt, primary) + _uncommitted_lines(wt)
+    local_lines = _branch_vs_primary_lines(
+        wt, primary, short=False
+    ) + _uncommitted_lines(wt)
     remote_lines = _primary_vs_origin_lines(
-        rp, primary
-    ) + _branch_vs_origin_lines(wt, branch)
+        rp, primary, short=False
+    ) + _branch_vs_origin_lines(wt, branch, short=False)
     _print_status_lines(local_lines, remote_lines, indent)
