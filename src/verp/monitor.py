@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.layout import HSplit, Layout, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.mouse_events import MouseEvent, MouseEventType
 from prompt_toolkit.styles import Style
 
 from verp.agent import format_age
@@ -127,22 +129,46 @@ class AgentMonitor:
         for i, (agent, dir_parts, dir_text, status_str) in enumerate(rows):
             sel = self._selected is not None and i == self._selected
             row = "reverse " if sel else ""
-
-            result.append((row + "bold", f"  {agent.session_id[:8]}  "))
-
-            for style, text in dir_parts:
-                result.append((row + style, text))
-            result.append((row, " " * (dir_w - len(dir_text) + 2)))
+            handler = self._row_mouse_handler(i)
 
             result.append(
-                (row + _STATUS_STYLE.get(agent.status, ""), status_str)
+                (row + "bold", f"  {agent.session_id[:8]}  ", handler)
             )
-            result.append((row, " " * (status_w - len(status_str) + 2)))
 
-            result.append((row + "fg:grey", format_age(agent.updated_at)))
+            for style, text in dir_parts:
+                result.append((row + style, text, handler))
+            result.append((row, " " * (dir_w - len(dir_text) + 2), handler))
+
+            result.append(
+                (
+                    row + _STATUS_STYLE.get(agent.status, ""),
+                    status_str,
+                    handler,
+                )
+            )
+            result.append(
+                (row, " " * (status_w - len(status_str) + 2), handler)
+            )
+
+            result.append(
+                (row + "fg:grey", format_age(agent.updated_at), handler)
+            )
             result.append(("", "\n"))
 
         return result
+
+    def _row_mouse_handler(
+        self, index: int
+    ) -> "Callable[[MouseEvent], object]":
+        def handler(event: MouseEvent) -> object:
+            if event.event_type != MouseEventType.MOUSE_DOWN:
+                return NotImplemented
+            if 0 <= index < len(self._agents):
+                self._selected = index
+                return None
+            return NotImplemented
+
+        return handler
 
     def _render_status_bar(self) -> StyleAndTextTuples:
         return [
@@ -215,6 +241,7 @@ class AgentMonitor:
             key_bindings=kb,
             style=Style.from_dict({"status-bar": "reverse"}),
             full_screen=True,
+            mouse_support=True,
         )
 
     def _clear_selected(self) -> None:
