@@ -100,7 +100,18 @@ def main() -> None:
     p_new.add_argument("repos", nargs="*", help="repos to include")
 
     sub.add_parser("list", help="list all projects")
-    sub.add_parser("pull", help="pull repos and fetch worktrees")
+    p_pull = sub.add_parser("pull", help="pull repos and fetch worktrees")
+    p_pull_scope = p_pull.add_mutually_exclusive_group()
+    p_pull_scope.add_argument(
+        "--all",
+        action="store_true",
+        help="pull all repos regardless of location",
+    )
+    p_pull_scope.add_argument(
+        "--project",
+        action="store_true",
+        help="pull all repos for the current project",
+    )
     sub.add_parser("status", help="show git status of current project")
     sub.add_parser("where", help="show current verp project and location")
 
@@ -206,7 +217,7 @@ def main() -> None:
     elif args.command == "list":
         sys.exit(cmd_list())
     elif args.command == "pull":
-        sys.exit(cmd_pull())
+        sys.exit(cmd_pull(all=args.all, project=args.project))
     elif args.command == "add":
         sys.exit(cmd_add(args.repo))
     elif args.command == "remove":

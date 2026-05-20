@@ -429,25 +429,26 @@ def cmd_repo_unclone(repo: str) -> int:
     return 0
 
 
-def cmd_pull() -> int:
+def _pull_repos(repos: list[str]) -> int:
     rc = 0
+    for repo in repos:
+        rp = REPO_DIR / repo
+        if not rp.is_dir() or not is_git_repo(rp):
+            continue
+        print(f"pulling {repo}...")
+        result = pull(rp)
+        if result.returncode != 0:
+            err(f"pull failed for {repo}:\n{result.stderr.strip()}")
+            rc = 1
+        else:
+            output = result.stdout.strip()
+            print(f"  {output if output else 'ok'}")
+    return rc
 
-    # Pull all primary repos
-    if REPO_DIR.exists():
-        for rp in sorted(REPO_DIR.iterdir()):
-            if not rp.is_dir() or not is_git_repo(rp):
-                continue
-            print(f"pulling {rp.name}...")
-            result = pull(rp)
-            if result.returncode != 0:
-                err(f"pull failed for {rp.name}:\n{result.stderr.strip()}")
-                rc = 1
-            else:
-                output = result.stdout.strip()
-                print(f"  {output if output else 'ok'}")
 
-    # Fetch in all project worktrees
-    for project_info in all_project_infos():
+def _fetch_worktrees(project_infos: list[ProjectInfo]) -> int:
+    rc = 0
+    for project_info in project_infos:
         name = project_info.name
         project_dir = Path(project_info.path)
         for repo in project_info.repos:
@@ -463,8 +464,60 @@ def cmd_pull() -> int:
                 rc = 1
             else:
                 print("  ok")
-
     return rc
+
+
+def _pull_worktree(worktree: Worktree) -> int:
+    rc = _pull_repos([worktree.repo])
+    print(f"fetching {worktree.project_dir.name}/{worktree.repo}...")
+    result = fetch(worktree.path)
+    if result.returncode != 0:
+        err(f"fetch failed:\n{result.stderr.strip()}")
+        return rc | 1
+    print("  ok")
+    return rc
+
+
+def _pull_project(project_info: ProjectInfo) -> int:
+    rc = _pull_repos(project_info.repos)
+    rc |= _fetch_worktrees([project_info])
+    return rc
+
+
+def _pull_all() -> int:
+    repos = (
+        [
+            d.name
+            for d in sorted(REPO_DIR.iterdir())
+            if d.is_dir() and is_git_repo(d)
+        ]
+        if REPO_DIR.exists()
+        else []
+    )
+    return _pull_repos(repos) | _fetch_worktrees(all_project_infos())
+
+
+def cmd_pull(all: bool = False, project: bool = False) -> int:
+    if all:
+        return _pull_all()
+
+    if project:
+        project_info = get_current_project()
+        if project_info is None:
+            err("--project requires a verp project directory")
+            return 1
+        return _pull_project(project_info)
+
+    # Location-driven
+    worktree = get_current_worktree()
+    if worktree is not None:
+        return _pull_worktree(worktree)
+
+    project_info = get_current_project()
+    if project_info is not None:
+        return _pull_project(project_info)
+
+    return _pull_all()
 
 
 def _format_directory(directory: str) -> str:
