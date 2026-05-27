@@ -321,14 +321,18 @@ def cmd_delete() -> int:
                 err(
                     f"failed to remove worktree for {repo}: {result.stderr.strip()}"
                 )
-                return 1
+                answer = input("keep going? [y/N] ").strip().lower()
+                if answer != "y":
+                    return 1
         if branch_exists(rp, branch):
             result = branch_delete(rp, branch)
             if result.returncode != 0:
                 err(
                     f"failed to delete branch {branch} in {repo}: {result.stderr.strip()}"
                 )
-                return 1
+                answer = input("keep going? [y/N] ").strip().lower()
+                if answer != "y":
+                    return 1
 
     subprocess.run(["rm", "-rf", str(project_dir)], check=True)
     delete_project(name)
