@@ -46,7 +46,7 @@ class AgentInfo:
 
 
 _VERSIONS_DIR = Path(__file__).parent / "_versions"
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 
 
 def _db_path(data_dir: Path) -> Path:
@@ -189,6 +189,15 @@ def _migrate_to_v20(conn: sqlite3.Connection, data_dir: Path) -> None:
     )
 
 
+def _migrate_to_v21(conn: sqlite3.Connection, data_dir: Path) -> None:
+    # Make Stop and UserPromptSubmit async — synchronous hooks with the
+    # default 600s timeout caused Claude to hang after each response.
+    shutil.copy2(
+        _VERSIONS_DIR / "21" / "claude_settings.json",
+        data_dir / "claude-settings.json",
+    )
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection, Path], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
@@ -210,6 +219,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection, Path], None]] = {
     18: _migrate_to_v18,
     19: _migrate_to_v19,
     20: _migrate_to_v20,
+    21: _migrate_to_v21,
 }
 
 
