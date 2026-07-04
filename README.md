@@ -50,7 +50,6 @@ git config --global verp.prefix "yourname/"
 ```bash
 verp new <name> [repos...]  # Create a new project (optionally add repos immediately)
 verp list                   # List all projects
-verp pull                   # Pull all repos and fetch latest worktrees
 ```
 
 **Inside a project directory:**
@@ -61,6 +60,13 @@ verp status                 # Git status across all worktrees in the project
 verp add <repo>             # Add another repo to the project; if a remote branch exists, check it out
 verp remove <repo>          # Remove a repo from the project, deleting its worktree and branch
 verp delete                 # Delete the project and all its worktrees
+```
+
+**Inside a project directory or worktree:**
+
+```bash
+verp pull                   # Pull all repos and fetch latest worktrees
+verp ff                     # Fast-forward worktrees onto the primary branch; lists each worktree's outcome
 ```
 
 **Inside a worktree (subdirectory of a project):**
