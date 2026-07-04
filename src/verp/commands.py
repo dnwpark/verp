@@ -340,6 +340,77 @@ def cmd_delete() -> int:
     return 0
 
 
+def _ff_worktree(wt: Path, repo: str, primary: str) -> int:
+    changed, untracked = worktree_changes(wt)
+    if changed or untracked:
+        console.print(
+            f"  {repo}  [dark_orange]uncommitted changes[/dark_orange]"
+        )
+        return 0
+
+    sync = ahead_behind(f"origin/{primary}", "HEAD", wt)
+    if sync is None:
+        console.print(f"  {repo}  [red]could not determine status[/red]")
+        return 1
+
+    ahead, behind = sync
+    if behind == 0:
+        console.print(f"  {repo}  [grey70]up to date[/grey70]")
+        return 0
+    if ahead > 0:
+        console.print(
+            f"  {repo}  [dark_orange]diverged ({ahead} ahead, {behind} behind)[/dark_orange]"
+        )
+        return 0
+
+    result = run(
+        ["git", "merge", "--ff-only", f"origin/{primary}"], cwd=wt, check=False
+    )
+    if result.returncode != 0:
+        console.print(f"  {repo}  [red]failed[/red]")
+        if result.stderr.strip():
+            err(result.stderr.strip())
+        return 1
+    n = behind
+    console.print(
+        f"  {repo}  [green]fast-forwarded ({n} commit{'s' if n != 1 else ''})[/green]"
+    )
+    return 0
+
+
+def cmd_ff() -> int:
+    worktree = get_current_worktree()
+    if worktree is not None:
+        primary = primary_branch(REPO_DIR / worktree.repo)
+        if not primary:
+            err(f"could not determine primary branch for {worktree.repo}")
+            return 1
+        return _ff_worktree(worktree.path, worktree.repo, primary)
+
+    project_info = get_current_project()
+    if project_info is None:
+        err("not inside a verp project worktree or project directory")
+        return 1
+
+    project_dir = Path(project_info.path)
+    rc = 0
+    for repo in project_info.repos:
+        wt = project_dir / repo
+        if not wt.is_dir():
+            console.print(f"  {repo}  [red]worktree missing[/red]")
+            rc = 1
+            continue
+        primary = primary_branch(REPO_DIR / repo)
+        if not primary:
+            console.print(
+                f"  {repo}  [red]could not determine primary branch[/red]"
+            )
+            rc = 1
+            continue
+        rc |= _ff_worktree(wt, repo, primary)
+    return rc
+
+
 def cmd_rebase(interactive: bool) -> int:
     worktree = get_current_worktree()
     if worktree is None:

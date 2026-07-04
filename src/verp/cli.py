@@ -27,6 +27,7 @@ from verp.commands import (
     cmd_new,
     cmd_pull,
     cmd_push,
+    cmd_ff,
     cmd_rebase,
     cmd_remove,
     cmd_repo_clone,
@@ -73,6 +74,9 @@ def main() -> None:
           remove <repo>            remove a repo from the current project
           delete                   delete the current project and its worktrees
 
+        worktree/project:
+          ff                       fast-forward worktrees onto primary branch
+
         worktree:
           rebase [-i]              rebase onto the primary branch
           push [-f]                push the current branch to origin
@@ -118,6 +122,8 @@ def main() -> None:
     sub.add_parser(
         "delete", help="delete the current project and its worktrees"
     )
+
+    sub.add_parser("ff", help="fast-forward worktrees onto primary branch")
 
     p_rebase = sub.add_parser(
         "rebase", help="rebase current worktree onto primary branch"
@@ -228,6 +234,8 @@ def main() -> None:
         sys.exit(cmd_status())
     elif args.command == "delete":
         sys.exit(cmd_delete())
+    elif args.command == "ff":
+        sys.exit(cmd_ff())
     elif args.command == "rebase":
         sys.exit(cmd_rebase(args.interactive))
     elif args.command == "push":
