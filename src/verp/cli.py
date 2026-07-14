@@ -70,7 +70,7 @@ def main() -> None:
 
         project:
           status                   show git status of each worktree
-          add <repo>               add a repo to the current project
+          add <repo>...            add repos to the current project
           remove <repo>            remove a repo from the current project
           delete                   delete the current project and its worktrees
 
@@ -135,8 +135,8 @@ def main() -> None:
     )
     p_push.add_argument("-f", action="store_true")
 
-    p_add = sub.add_parser("add", help="add a repo to the current project")
-    p_add.add_argument("repo", help="repo to add").completer = repo_completer  # type: ignore[attr-defined]
+    p_add = sub.add_parser("add", help="add repos to the current project")
+    p_add.add_argument("repos", nargs="+", help="repos to add").completer = repo_completer  # type: ignore[attr-defined]
 
     p_remove = sub.add_parser(
         "remove", help="remove a repo from the current project"
@@ -225,7 +225,7 @@ def main() -> None:
     elif args.command == "pull":
         sys.exit(cmd_pull(all=args.all, project=args.project))
     elif args.command == "add":
-        sys.exit(cmd_add(args.repo))
+        sys.exit(cmd_add(args.repos))
     elif args.command == "remove":
         sys.exit(cmd_remove(args.repo))
     elif args.command == "where":

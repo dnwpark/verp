@@ -140,7 +140,7 @@ def cmd_new(name: str, repos: list[str]) -> int:
     return 0
 
 
-def cmd_add(repo: str) -> int:
+def cmd_add(repos: list[str]) -> int:
     project_info = get_current_project()
     if project_info is None:
         err("not inside a verp project")
@@ -149,26 +149,37 @@ def cmd_add(repo: str) -> int:
     name = project_info.name
     project_dir = Path(project_info.path)
 
-    if is_repo_in_project(name, repo):
-        err(f"'{repo}' is already associated with project '{name}'")
-        return 1
+    repo_paths: list[Path] = []
+    for repo in repos:
+        if is_repo_in_project(name, repo):
+            err(f"'{repo}' is already associated with project '{name}'")
+            return 1
+        rp = REPO_DIR / repo
+        if not rp.is_dir():
+            err(f"repo '{repo}' not found in {REPO_DIR}")
+            return 1
+        if not is_git_repo(rp):
+            err(f"'{repo}' is not a git repository")
+            return 1
+        repo_paths.append(rp)
 
-    rp = REPO_DIR / repo
-    if not rp.is_dir():
-        err(f"repo '{repo}' not found in {REPO_DIR}")
-        return 1
-    if not is_git_repo(rp):
-        err(f"'{repo}' is not a git repository")
-        return 1
+    added: list[str] = []
+    for repo, rp in zip(repos, repo_paths):
+        worktree_dir = project_dir / repo
+        result = worktree_add(rp, project_info.branch, worktree_dir)
+        if result.returncode != 0:
+            err(
+                f"failed to create worktree for '{repo}':\n{result.stderr.strip()}"
+            )
+            for done_repo in added:
+                worktree_remove(REPO_DIR / done_repo, project_dir / done_repo)
+            return 1
+        print(
+            f"{repo}: worktree at {worktree_dir} (branch {project_info.branch})"
+        )
+        add_repo_to_project(name, repo)
+        added.append(repo)
 
-    worktree_dir = project_dir / repo
-    result = worktree_add(rp, project_info.branch, worktree_dir)
-    if result.returncode != 0:
-        err(f"failed to create worktree for '{repo}':\n{result.stderr.strip()}")
-        return 1
-
-    print(f"{repo}: worktree at {worktree_dir} (branch {project_info.branch})")
-    add_repo_to_project(name, repo)
     return 0
 
 
