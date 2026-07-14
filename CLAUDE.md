@@ -41,6 +41,7 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
 - `src/verp/project.py` — project migration logic
 - `src/verp/status.py` — rich-formatted git status display
 - `src/verp/claude_terminal.py` — PTY machinery and `cmd_claude`
+- `src/verp/pi_terminal.py` — subprocess launcher and `cmd_pi`
 - `src/verp/time.py` — time utilities (`now_ms()`)
 
 ## Data

@@ -41,6 +41,7 @@ from verp.git import REPO_DIR
 from verp.paths import DATA_DIR
 from verp.project import init_project
 from verp.claude_terminal import cmd_claude
+from verp.pi_terminal import cmd_pi
 from verp.pi_hooks import (
     cmd_internal_hook_pi_agent_settled,
     cmd_internal_hook_pi_agent_start,
@@ -69,6 +70,9 @@ def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "claude":
         sys.exit(cmd_claude(sys.argv[2:]))
 
+    if len(sys.argv) > 1 and sys.argv[1] == "pi":
+        sys.exit(cmd_pi(sys.argv[2:]))
+
     description = textwrap.dedent("""\
         global:
           new <name> [repos...]    create a new project in the current directory
@@ -77,6 +81,7 @@ def main() -> None:
           repo                     manage git repos
           agent                    manage agents
           claude [args...]         launch claude with verp hooks
+          pi [args...]            launch pi with verp hooks
 
         project:
           status                   show git status of each worktree
@@ -178,6 +183,9 @@ def main() -> None:
         "claude", help="launch claude with verp hooks"
     )
     p_verp_claude.add_argument("args", nargs=argparse.REMAINDER)
+
+    p_verp_pi = sub.add_parser("pi", help="launch pi with verp hooks")
+    p_verp_pi.add_argument("args", nargs=argparse.REMAINDER)
 
     p_internal = sub.add_parser("_internal")
     internal_sub = p_internal.add_subparsers(
@@ -344,6 +352,8 @@ def main() -> None:
             )
     elif args.command == "claude":
         sys.exit(cmd_claude(args.args))
+    elif args.command == "pi":
+        sys.exit(cmd_pi(args.args))
     elif args.command == "_pi":
         if args.pi_command == "hook_session_start":
             sys.exit(
