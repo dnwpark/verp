@@ -13,6 +13,7 @@ from verp.claude_permission_hook import (
     handle_permission_request,
 )
 from verp.commands import get_current_project
+from verp.agent import AgentKind
 from verp.db import (
     AgentStatus,
     _terminal_info,
@@ -115,6 +116,7 @@ def _handle_stdin(
                     os.getcwd(),
                     AgentStatus.WAITING_PROMPT,
                     now_ms(),
+                    AgentKind.CLAUDE,
                 )
         for seq in jump_sequences:
             data = data.replace(seq, b"")

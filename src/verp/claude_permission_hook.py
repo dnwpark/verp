@@ -42,6 +42,7 @@ def _terminal_cols() -> int:
         return 80
 
 
+from verp.agent import AgentKind
 from verp.db import (
     AgentStatus,
     reset_agent_tool,
@@ -284,6 +285,7 @@ def _show_permission_dialog(
                     directory,
                     AgentStatus.WAITING_PERMISSION,
                     now_ms(),
+                    AgentKind.CLAUDE,
                 )
             continue
         ch = os.read(stdin_fd, 1)
@@ -405,6 +407,7 @@ def handle_permission_request(
             directory,
             AgentStatus.WAITING_PROMPT,
             now_ms(),
+            AgentKind.CLAUDE,
         )
         reset_agent_tool(session_id)
         os.write(master_fd, b"\x03")
@@ -427,13 +430,21 @@ def cmd_internal_hook_permission_request(
 ) -> int:
     if tool == "AskUserQuestion":
         set_agent_status(
-            session_id, directory, AgentStatus.ASKING_QUESTION, timestamp
+            session_id,
+            directory,
+            AgentStatus.ASKING_QUESTION,
+            timestamp,
+            AgentKind.CLAUDE,
         )
         return 0
 
     if directory:
         set_agent_status(
-            session_id, directory, AgentStatus.WAITING_PERMISSION, timestamp
+            session_id,
+            directory,
+            AgentStatus.WAITING_PERMISSION,
+            timestamp,
+            AgentKind.CLAUDE,
         )
         set_agent_tool(session_id, tool)
 
@@ -478,7 +489,13 @@ def cmd_internal_hook_permission_request(
 
     if directory and decision.behavior == "allow":
 
-        set_agent_status(session_id, directory, AgentStatus.WORKING, now_ms())
+        set_agent_status(
+            session_id,
+            directory,
+            AgentStatus.WORKING,
+            now_ms(),
+            AgentKind.CLAUDE,
+        )
 
     decision_obj: dict[str, object] = {"behavior": decision.behavior}
     if decision.updated_input is not None:

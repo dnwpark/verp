@@ -1,7 +1,19 @@
+from enum import StrEnum
 from pathlib import Path
 from typing import NamedTuple
 
 from verp.time import now_ms
+
+
+class AgentKind(StrEnum):
+    CLAUDE = "claude"
+    PI = "pi"
+
+
+AGENT_KIND_PREFIX: dict[AgentKind, str] = {
+    AgentKind.CLAUDE: "cl",
+    AgentKind.PI: "pi",
+}
 
 
 class DirectoryParts(NamedTuple):

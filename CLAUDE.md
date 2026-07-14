@@ -39,7 +39,7 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
 - `src/verp/paths.py` — all path constants (`DATA_DIR`, `CLAUDE_DIR`, `CONFIG_DIR`, `USER_CLAUDE_DIR`) and socket path helpers
 - `src/verp/project.py` — project migration logic
 - `src/verp/status.py` — rich-formatted git status display
-- `src/verp/terminal.py` — PTY machinery and `cmd_claude`
+- `src/verp/claude_terminal.py` — PTY machinery and `cmd_claude`
 - `src/verp/time.py` — time utilities (`now_ms()`)
 
 ## Data
@@ -73,5 +73,12 @@ DB schema migrations run automatically on startup via `init_db()`. Each migratio
 - `waiting_permission` — waiting for a permission decision
 - `asking_question` — Claude is asking the user a question via AskUserQuestion
 - `paused` — manually set via the monitor (`p`) to de-emphasize idle agents
+
+## Agent kind values
+
+The `agent_type` column on the `agents` table identifies which AI agent is running:
+
+- `claude` — Anthropic Claude (default)
+- `pi` — pi coding agent
 
 Agents can be cleared via `verp agent clear <id>` or `Delete` in the monitor. Cleared agents re-appear if they send another status update; clearing is mainly useful for agents that did not properly terminate.

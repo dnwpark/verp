@@ -5,7 +5,7 @@ from pathlib import Path
 
 from rich.table import Table
 
-from verp.agent import format_age
+from verp.agent import AGENT_KIND_PREFIX, AgentKind, format_age
 from verp.db import (
     AgentStatus,
     ProjectInfo,
@@ -628,7 +628,8 @@ def _build_agent_table() -> Table:
     if not agents:
         table.add_row("[grey70]no agents[/grey70]", "", "", "")
     for agent in agents:
-        sid = agent.session_id[:8]
+        prefix = AGENT_KIND_PREFIX.get(agent.agent_type, str(agent.agent_type))
+        sid = f"{prefix}-{agent.session_id[:8]}"
         if agent.status == AgentStatus.WORKING:
             color = "green"
         elif agent.status == AgentStatus.WAITING_PROMPT:

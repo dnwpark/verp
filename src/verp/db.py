@@ -8,6 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from verp.agent import AgentKind
 from verp.paths import DATA_DIR
 
 
@@ -43,10 +44,11 @@ class AgentInfo:
     updated_at: int
     verp_pid: int | None = None
     terminal: TerminalInfo | None = None
+    agent_type: AgentKind = AgentKind.CLAUDE
 
 
 _VERSIONS_DIR = Path(__file__).parent / "_versions"
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 
 
 def _db_path(data_dir: Path) -> Path:
@@ -198,6 +200,12 @@ def _migrate_to_v21(conn: sqlite3.Connection, data_dir: Path) -> None:
     )
 
 
+def _migrate_to_v22(conn: sqlite3.Connection, data_dir: Path) -> None:
+    conn.execute(
+        "ALTER TABLE agents ADD COLUMN agent_type TEXT NOT NULL DEFAULT 'claude'"
+    )
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection, Path], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
@@ -220,6 +228,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection, Path], None]] = {
     19: _migrate_to_v19,
     20: _migrate_to_v20,
     21: _migrate_to_v21,
+    22: _migrate_to_v22,
 }
 
 
@@ -439,7 +448,11 @@ def _terminal_info() -> TerminalInfo | None:
 
 
 def set_agent_status(
-    session_id: str, directory: str, status: AgentStatus, timestamp: int
+    session_id: str,
+    directory: str,
+    status: AgentStatus,
+    timestamp: int,
+    agent_type: AgentKind,
 ) -> None:
     """Create agent if needed and set status. Uses timestamp guard."""
     pid = _verp_pid()
@@ -450,8 +463,8 @@ def set_agent_status(
         with conn:
             conn.execute(
                 "INSERT INTO agents"
-                " (session_id, directory, status, tool, updated_at, verp_pid, terminal_app, terminal_data)"
-                " VALUES (?, ?, ?, NULL, ?, ?, ?, ?)"
+                " (session_id, directory, status, tool, updated_at, verp_pid, terminal_app, terminal_data, agent_type)"
+                " VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?)"
                 " ON CONFLICT(session_id) DO UPDATE SET"
                 "     status = excluded.status,"
                 "     updated_at = excluded.updated_at"
@@ -464,6 +477,7 @@ def set_agent_status(
                     pid,
                     terminal_app,
                     terminal_data,
+                    agent_type,
                 ),
             )
 
@@ -584,12 +598,16 @@ def _terminal_from_row(row: sqlite3.Row) -> TerminalInfo | None:
 
 _AGENT_COLUMNS = (
     "SELECT session_id, directory, status, tool, updated_at, verp_pid,"
-    "       terminal_app, terminal_data"
+    "       terminal_app, terminal_data, agent_type"
     " FROM agents"
 )
 
 
 def _agent_info_from_row(row: sqlite3.Row) -> AgentInfo:
+    try:
+        agent_type = AgentKind(str(row["agent_type"]))
+    except ValueError:
+        agent_type = AgentKind.CLAUDE
     return AgentInfo(
         session_id=str(row["session_id"]),
         directory=str(row["directory"]),
@@ -598,6 +616,7 @@ def _agent_info_from_row(row: sqlite3.Row) -> AgentInfo:
         updated_at=int(row["updated_at"]),
         verp_pid=int(row["verp_pid"]) if row["verp_pid"] is not None else None,
         terminal=_terminal_from_row(row),
+        agent_type=agent_type,
     )
 
 

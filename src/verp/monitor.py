@@ -13,7 +13,7 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.mouse_events import MouseEvent, MouseEventType
 from prompt_toolkit.styles import Style
 
-from verp.agent import format_age
+from verp.agent import AGENT_KIND_PREFIX, AgentKind, format_age
 from verp.paths import DATA_DIR
 from verp.db import (
     AgentInfo,
@@ -131,9 +131,11 @@ class AgentMonitor:
             row = "reverse " if sel else ""
             handler = self._row_mouse_handler(i)
 
-            result.append(
-                (row + "bold", f"  {agent.session_id[:8]}  ", handler)
+            prefix = AGENT_KIND_PREFIX.get(
+                agent.agent_type, str(agent.agent_type)
             )
+            sid_label = f"{prefix}-{agent.session_id[:8]}"
+            result.append((row + "bold", f"  {sid_label}  ", handler))
 
             for style, text in dir_parts:
                 result.append((row + style, text, handler))

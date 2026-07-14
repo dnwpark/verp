@@ -40,7 +40,7 @@ from verp.db import all_project_infos, init_db
 from verp.git import REPO_DIR
 from verp.paths import DATA_DIR
 from verp.project import init_project
-from verp.terminal import cmd_claude
+from verp.claude_terminal import cmd_claude
 
 
 def main() -> None:

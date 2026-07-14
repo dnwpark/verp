@@ -1,3 +1,4 @@
+from verp.agent import AgentKind
 from verp.claude_permission_hook import cmd_internal_hook_permission_request
 from verp.db import (
     AgentStatus,
@@ -27,7 +28,9 @@ def cmd_internal_hook_pre_tool_use(
 ) -> int:
     if not directory:
         return 0
-    set_agent_status(session_id, directory, AgentStatus.WORKING, timestamp)
+    set_agent_status(
+        session_id, directory, AgentStatus.WORKING, timestamp, AgentKind.CLAUDE
+    )
     set_agent_tool(session_id, tool)
     return 0
 
@@ -37,7 +40,9 @@ def cmd_internal_hook_post_tool_use(
 ) -> int:
     if not directory:
         return 0
-    set_agent_status(session_id, directory, AgentStatus.WORKING, timestamp)
+    set_agent_status(
+        session_id, directory, AgentStatus.WORKING, timestamp, AgentKind.CLAUDE
+    )
     reset_agent_tool(session_id)
     return 0
 
@@ -48,7 +53,11 @@ def cmd_internal_hook_post_tool_use_failure(
     if not directory:
         return 0
     set_agent_status(
-        session_id, directory, AgentStatus.WAITING_PROMPT, timestamp
+        session_id,
+        directory,
+        AgentStatus.WAITING_PROMPT,
+        timestamp,
+        AgentKind.CLAUDE,
     )
     reset_agent_tool(session_id)
     return 0
@@ -59,7 +68,9 @@ def cmd_internal_hook_user_prompt_submit(
 ) -> int:
     if not directory:
         return 0
-    set_agent_status(session_id, directory, AgentStatus.WORKING, timestamp)
+    set_agent_status(
+        session_id, directory, AgentStatus.WORKING, timestamp, AgentKind.CLAUDE
+    )
     return 0
 
 
@@ -69,7 +80,11 @@ def cmd_internal_hook_stop(
     if not directory:
         return 0
     set_agent_status(
-        session_id, directory, AgentStatus.WAITING_PROMPT, timestamp
+        session_id,
+        directory,
+        AgentStatus.WAITING_PROMPT,
+        timestamp,
+        AgentKind.CLAUDE,
     )
     return 0
 
