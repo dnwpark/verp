@@ -8,7 +8,7 @@ from verp.paths import DATA_DIR, PI_DIR
 
 _PI_PACKAGE_DIR = Path(__file__).parent / "_pi"  # contains verp.ts and skills/
 
-PI_DIR_VERSION = 2
+PI_DIR_VERSION = 4
 
 
 def _migrate_to_v1(conn: sqlite3.Connection) -> None:
@@ -33,9 +33,25 @@ def _migrate_to_v2(conn: sqlite3.Connection) -> None:
     shutil.copytree(src_skills, dest_skills)
 
 
+def _migrate_to_v3(conn: sqlite3.Connection) -> None:
+    # Redeploy updated verp.ts (Ctrl+\ handler: drop --focus flag).
+    src = _PI_PACKAGE_DIR / "verp.ts"
+    dest = DATA_DIR / "pi-extension.ts"
+    shutil.copy2(src, dest)
+
+
+def _migrate_to_v4(conn: sqlite3.Connection) -> None:
+    # Redeploy updated verp.ts (Ctrl+\ handler: ensure agent registered).
+    src = _PI_PACKAGE_DIR / "verp.ts"
+    dest = DATA_DIR / "pi-extension.ts"
+    shutil.copy2(src, dest)
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
+    3: _migrate_to_v3,
+    4: _migrate_to_v4,
 }
 
 

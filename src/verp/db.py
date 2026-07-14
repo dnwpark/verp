@@ -430,9 +430,15 @@ def _verp_pid() -> int | None:
     from verp.paths import verp_sock_pid
 
     sock = os.environ.get("VERP_SOCKET", "")
-    if not sock:
-        return None
-    return verp_sock_pid(sock)
+    if sock:
+        return verp_sock_pid(sock)
+    pid_str = os.environ.get("VERP_PID", "")
+    if pid_str:
+        try:
+            return int(pid_str)
+        except ValueError:
+            return None
+    return None
 
 
 def _terminal_info() -> TerminalInfo | None:

@@ -80,9 +80,12 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerShortcut("ctrl+\\", {
     description: "Jump to verp monitor",
-    handler: async (_ctx) => {
+    handler: async (ctx) => {
       try {
-        execFileSync("verp", ["agent", "monitor", "--focus"], {
+        // Ensure agent is registered (mirrors claude_terminal.py Ctrl+\ handler).
+        const id = sessionId(ctx);
+        if (id) hook("hook_agent_settled", id, ctx.cwd);
+        execFileSync("verp", ["agent", "monitor"], {
           stdio: "ignore",
         });
       } catch {}
