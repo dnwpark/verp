@@ -10,7 +10,8 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { execFileSync } from "node:child_process";
-import { basename, extname } from "node:path";
+import { existsSync } from "node:fs";
+import { basename, extname, join } from "node:path";
 
 export default function (pi: ExtensionAPI) {
   const verpPid = process.env.VERP_PID ?? "";
@@ -60,6 +61,21 @@ export default function (pi: ExtensionAPI) {
   pi.on("tool_result", async (event, ctx) => {
     const id = sessionId(ctx);
     if (id) hook("hook_tool_result", id, ctx.cwd, event.toolName);
+  });
+
+  // Managed skills directory: DATA_DIR/pi_dir/skills/
+  // DATA_DIR matches verp's paths.py: $VERP_DATA_DIR or ~/.local/share/verp
+  const dataDir =
+    process.env.VERP_DATA_DIR ??
+    join(process.env.HOME ?? "", ".local", "share", "verp");
+  const piManagedDir = join(dataDir, "pi_dir");
+
+  pi.on("resources_discover", async (_event, _ctx) => {
+    const skillsPath = join(piManagedDir, "skills");
+    if (existsSync(skillsPath)) {
+      return { skillPaths: [skillsPath] };
+    }
+    return {};
   });
 
   pi.registerShortcut("ctrl+\\", {

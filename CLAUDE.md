@@ -19,6 +19,7 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
 - `src/verp/agent.py` — shared agent display utilities (`format_age`, `directory_parts`)
 - `src/verp/cli.py` — entry point: `main()`, argparse setup, and dispatch
 - `src/verp/claude_dir.py` — managed `CLAUDE_DIR` content versioning and sync
+- `src/verp/pi_dir.py` — managed `pi-extension.ts` versioning and deployment
 - `src/verp/claude_hooks.py` — Claude lifecycle hook handlers (`cmd_internal_hook_*`)
 - `src/verp/claude_permission_hook.py` — permission dialog and socket communication
 - `src/verp/commands.py` — business logic command implementations (`cmd_*`)
@@ -36,7 +37,7 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
   - `_focusers/_wezterm.py` — WezTerm CLI focuser
 - `src/verp/git.py` — git subprocess wrappers
 - `src/verp/monitor.py` — interactive agent monitor TUI (prompt_toolkit)
-- `src/verp/paths.py` — all path constants (`DATA_DIR`, `CLAUDE_DIR`, `CONFIG_DIR`, `USER_CLAUDE_DIR`) and socket path helpers
+- `src/verp/paths.py` — all path constants (`DATA_DIR`, `CLAUDE_DIR`, `PI_DIR`, `CONFIG_DIR`, `USER_CLAUDE_DIR`) and socket path helpers
 - `src/verp/project.py` — project migration logic
 - `src/verp/status.py` — rich-formatted git status display
 - `src/verp/claude_terminal.py` — PTY machinery and `cmd_claude`
@@ -52,6 +53,7 @@ All persistent state lives in `DATA_DIR` (`~/.local/share/verp/`):
 - `monitor.pid` — singleton lock file for the agent monitor (JSON `MonitorLock`)
 - `debug/` — permission dialog snapshots (`permission-<timestamp>.json`) for alignment debugging
 - `claude_dir/` — isolated directory passed to `verp claude` via `--add-dir`; contains `.claude/` with managed skills and CLAUDE.md (`CLAUDE_DIR` in `paths.py`)
+- `pi_dir/` — isolated directory passed to `verp pi` via `resources_discover`; contains `skills/` with managed skills (`PI_DIR` in `paths.py`)
 
 User-customizable Claude config lives in `CONFIG_DIR` (`~/.config/verp/`):
 - `.claude/` — user-authored skills and CLAUDE.md (`USER_CLAUDE_DIR` in `paths.py`); passed via `--add-dir` if it exists
@@ -59,6 +61,8 @@ User-customizable Claude config lives in `CONFIG_DIR` (`~/.config/verp/`):
 DB schema migrations run automatically on startup via `init_db()`. Each migration version has a corresponding entry in `_MIGRATIONS` in `db.py`. When adding a new migration, increment `SCHEMA_VERSION` and add an entry to `_MIGRATIONS`.
 
 `claude_dir/` content is versioned separately via `CLAUDE_DIR_VERSION` in `claude_dir.py` and tracked in the `config` table. When updating bundled content in `_claude/`, increment `CLAUDE_DIR_VERSION` and add an entry to `_MIGRATIONS` in `claude_dir.py`.
+
+`pi-extension.ts` and `pi_dir/` are versioned together via `PI_DIR_VERSION` in `pi_dir.py` and tracked in the `config` table. When updating `src/verp/_pi/verp.ts` or any content in `src/verp/_pi/skills/`, increment `PI_DIR_VERSION` and add an entry to `_MIGRATIONS` in `pi_dir.py`.
 
 ## Hook integration
 

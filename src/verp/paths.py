@@ -7,6 +7,7 @@ DATA_DIR = (
     else Path.home() / ".local" / "share" / "verp"
 )
 CLAUDE_DIR = DATA_DIR / "claude_dir"
+PI_DIR = DATA_DIR / "pi_dir"
 
 CONFIG_DIR = Path.home() / ".config" / "verp"
 USER_CLAUDE_DIR = CONFIG_DIR / ".claude"
