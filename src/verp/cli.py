@@ -41,11 +41,19 @@ from verp.git import REPO_DIR
 from verp.paths import DATA_DIR
 from verp.project import init_project
 from verp.claude_terminal import cmd_claude
+from verp.pi_hooks import (
+    cmd_internal_hook_pi_agent_settled,
+    cmd_internal_hook_pi_agent_start,
+    cmd_internal_hook_pi_session_end,
+    cmd_internal_hook_pi_session_start,
+    cmd_internal_hook_pi_tool_call,
+    cmd_internal_hook_pi_tool_result,
+)
 
 
 def main() -> None:
     # Ensure that we don't exit before the stop hook is fully processed.
-    if len(sys.argv) > 1 and sys.argv[1] == "_claude":
+    if len(sys.argv) > 1 and sys.argv[1] in ("_claude", "_pi"):
         signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
     from contextlib import closing
@@ -178,42 +186,73 @@ def main() -> None:
 
     p_claude = sub.add_parser("_claude")
     claude_sub = p_claude.add_subparsers(dest="claude_command", required=True)
-    p_hook_session_start = claude_sub.add_parser("hook_session_start")
-    p_hook_session_start.add_argument("session_id")
-    p_hook_session_start.add_argument("timestamp", type=int)
-    p_hook_session_end = claude_sub.add_parser("hook_session_end")
-    p_hook_session_end.add_argument("session_id")
-    p_hook_session_end.add_argument("timestamp", type=int)
-    p_hook_pre_tool_use = claude_sub.add_parser("hook_pre_tool_use")
-    p_hook_pre_tool_use.add_argument("session_id")
-    p_hook_pre_tool_use.add_argument("directory")
-    p_hook_pre_tool_use.add_argument("tool")
-    p_hook_pre_tool_use.add_argument("timestamp", type=int)
-    p_hook_post_tool_use_failure = claude_sub.add_parser(
+    p_claude_hook_session_start = claude_sub.add_parser("hook_session_start")
+    p_claude_hook_session_start.add_argument("session_id")
+    p_claude_hook_session_start.add_argument("timestamp", type=int)
+    p_claude_hook_session_end = claude_sub.add_parser("hook_session_end")
+    p_claude_hook_session_end.add_argument("session_id")
+    p_claude_hook_session_end.add_argument("timestamp", type=int)
+    p_claude_hook_pre_tool_use = claude_sub.add_parser("hook_pre_tool_use")
+    p_claude_hook_pre_tool_use.add_argument("session_id")
+    p_claude_hook_pre_tool_use.add_argument("directory")
+    p_claude_hook_pre_tool_use.add_argument("tool")
+    p_claude_hook_pre_tool_use.add_argument("timestamp", type=int)
+    p_claude_hook_post_tool_use_failure = claude_sub.add_parser(
         "hook_post_tool_use_failure"
     )
-    p_hook_post_tool_use_failure.add_argument("session_id")
-    p_hook_post_tool_use_failure.add_argument("directory")
-    p_hook_post_tool_use_failure.add_argument("tool")
-    p_hook_post_tool_use_failure.add_argument("timestamp", type=int)
-    p_hook_post_tool_use = claude_sub.add_parser("hook_post_tool_use")
-    p_hook_post_tool_use.add_argument("session_id")
-    p_hook_post_tool_use.add_argument("directory")
-    p_hook_post_tool_use.add_argument("tool")
-    p_hook_post_tool_use.add_argument("timestamp", type=int)
-    p_hook_permission_request = claude_sub.add_parser("hook_permission_request")
-    p_hook_permission_request.add_argument("session_id")
-    p_hook_permission_request.add_argument("directory")
-    p_hook_permission_request.add_argument("tool")
-    p_hook_permission_request.add_argument("timestamp", type=int)
-    p_hook_user_prompt_submit = claude_sub.add_parser("hook_user_prompt_submit")
-    p_hook_user_prompt_submit.add_argument("session_id")
-    p_hook_user_prompt_submit.add_argument("directory")
-    p_hook_user_prompt_submit.add_argument("timestamp", type=int)
-    p_hook_stop = claude_sub.add_parser("hook_stop")
-    p_hook_stop.add_argument("session_id")
-    p_hook_stop.add_argument("directory")
-    p_hook_stop.add_argument("timestamp", type=int)
+    p_claude_hook_post_tool_use_failure.add_argument("session_id")
+    p_claude_hook_post_tool_use_failure.add_argument("directory")
+    p_claude_hook_post_tool_use_failure.add_argument("tool")
+    p_claude_hook_post_tool_use_failure.add_argument("timestamp", type=int)
+    p_claude_hook_post_tool_use = claude_sub.add_parser("hook_post_tool_use")
+    p_claude_hook_post_tool_use.add_argument("session_id")
+    p_claude_hook_post_tool_use.add_argument("directory")
+    p_claude_hook_post_tool_use.add_argument("tool")
+    p_claude_hook_post_tool_use.add_argument("timestamp", type=int)
+    p_claude_hook_permission_request = claude_sub.add_parser(
+        "hook_permission_request"
+    )
+    p_claude_hook_permission_request.add_argument("session_id")
+    p_claude_hook_permission_request.add_argument("directory")
+    p_claude_hook_permission_request.add_argument("tool")
+    p_claude_hook_permission_request.add_argument("timestamp", type=int)
+    p_claude_hook_user_prompt_submit = claude_sub.add_parser(
+        "hook_user_prompt_submit"
+    )
+    p_claude_hook_user_prompt_submit.add_argument("session_id")
+    p_claude_hook_user_prompt_submit.add_argument("directory")
+    p_claude_hook_user_prompt_submit.add_argument("timestamp", type=int)
+    p_claude_hook_stop = claude_sub.add_parser("hook_stop")
+    p_claude_hook_stop.add_argument("session_id")
+    p_claude_hook_stop.add_argument("directory")
+    p_claude_hook_stop.add_argument("timestamp", type=int)
+
+    p_pi_hooks = sub.add_parser("_pi")
+    pi_sub = p_pi_hooks.add_subparsers(dest="pi_command", required=True)
+    p_pi_hook_session_start = pi_sub.add_parser("hook_session_start")
+    p_pi_hook_session_start.add_argument("session_id")
+    p_pi_hook_session_start.add_argument("timestamp", type=int)
+    p_pi_hook_session_end = pi_sub.add_parser("hook_session_end")
+    p_pi_hook_session_end.add_argument("session_id")
+    p_pi_hook_session_end.add_argument("timestamp", type=int)
+    p_pi_hook_agent_start = pi_sub.add_parser("hook_agent_start")
+    p_pi_hook_agent_start.add_argument("session_id")
+    p_pi_hook_agent_start.add_argument("directory")
+    p_pi_hook_agent_start.add_argument("timestamp", type=int)
+    p_pi_hook_agent_settled = pi_sub.add_parser("hook_agent_settled")
+    p_pi_hook_agent_settled.add_argument("session_id")
+    p_pi_hook_agent_settled.add_argument("directory")
+    p_pi_hook_agent_settled.add_argument("timestamp", type=int)
+    p_pi_hook_tool_call = pi_sub.add_parser("hook_tool_call")
+    p_pi_hook_tool_call.add_argument("session_id")
+    p_pi_hook_tool_call.add_argument("directory")
+    p_pi_hook_tool_call.add_argument("tool")
+    p_pi_hook_tool_call.add_argument("timestamp", type=int)
+    p_pi_hook_tool_result = pi_sub.add_parser("hook_tool_result")
+    p_pi_hook_tool_result.add_argument("session_id")
+    p_pi_hook_tool_result.add_argument("directory")
+    p_pi_hook_tool_result.add_argument("tool")
+    p_pi_hook_tool_result.add_argument("timestamp", type=int)
 
     argcomplete.autocomplete(parser, always_complete_options=False)
     args = parser.parse_args()
@@ -303,3 +342,40 @@ def main() -> None:
             )
     elif args.command == "claude":
         sys.exit(cmd_claude(args.args))
+    elif args.command == "_pi":
+        if args.pi_command == "hook_session_start":
+            sys.exit(
+                cmd_internal_hook_pi_session_start(
+                    args.session_id, args.timestamp
+                )
+            )
+        elif args.pi_command == "hook_session_end":
+            sys.exit(
+                cmd_internal_hook_pi_session_end(
+                    args.session_id, args.timestamp
+                )
+            )
+        elif args.pi_command == "hook_agent_start":
+            sys.exit(
+                cmd_internal_hook_pi_agent_start(
+                    args.session_id, args.directory, args.timestamp
+                )
+            )
+        elif args.pi_command == "hook_agent_settled":
+            sys.exit(
+                cmd_internal_hook_pi_agent_settled(
+                    args.session_id, args.directory, args.timestamp
+                )
+            )
+        elif args.pi_command == "hook_tool_call":
+            sys.exit(
+                cmd_internal_hook_pi_tool_call(
+                    args.session_id, args.directory, args.tool, args.timestamp
+                )
+            )
+        elif args.pi_command == "hook_tool_result":
+            sys.exit(
+                cmd_internal_hook_pi_tool_result(
+                    args.session_id, args.directory, args.tool, args.timestamp
+                )
+            )
