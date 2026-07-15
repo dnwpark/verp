@@ -134,7 +134,8 @@ class AgentMonitor:
             prefix = AGENT_KIND_PREFIX.get(
                 agent.agent_type, str(agent.agent_type)
             )
-            sid_label = f"{prefix}-{agent.session_id[:8]}"
+            sid_short = agent.session_id.split("_", 1)[-1][:8]
+            sid_label = f"{prefix}-{sid_short}"
             result.append((row + "bold", f"  {sid_label}  ", handler))
 
             for style, text in dir_parts:
