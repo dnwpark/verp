@@ -82,9 +82,10 @@ export default function (pi: ExtensionAPI) {
     description: "Jump to verp monitor",
     handler: async (ctx) => {
       try {
-        // Ensure agent is registered (mirrors claude_terminal.py Ctrl+\ handler).
+        // Only registers the agent as waiting_prompt if not already present;
+        // leaves status unchanged if already registered.
         const id = sessionId(ctx);
-        if (id) hook("hook_agent_settled", id, ctx.cwd);
+        if (id) hook("hook_jump", id, ctx.cwd);
         execFileSync("verp", ["agent", "monitor"], {
           stdio: "ignore",
         });

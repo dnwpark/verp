@@ -2,6 +2,7 @@ from verp.agent import AgentKind
 from verp.db import (
     AgentStatus,
     _verp_pid,
+    has_agent_by_verp_pid,
     register_session,
     remove_agent,
     reset_agent_tool,
@@ -72,6 +73,31 @@ def cmd_internal_hook_pi_tool_result(
     return 0
 
 
+def cmd_internal_hook_pi_jump(
+    session_id: str, directory: str, timestamp: int
+) -> int:
+    """Handle Ctrl+\ jump-to-monitor from within a pi session.
+
+    Only registers the agent as WAITING_PROMPT if it is not already present in
+    the agents table.  If already registered, the existing status is left
+    unchanged.
+    """
+    pid = _verp_pid()
+    if pid is None:
+        return 0
+    if not has_agent_by_verp_pid(pid):
+        if not directory:
+            return 0
+        set_agent_status(
+            session_id,
+            directory,
+            AgentStatus.WAITING_PROMPT,
+            timestamp,
+            AgentKind.PI,
+        )
+    return 0
+
+
 __all__ = [
     "cmd_internal_hook_pi_session_start",
     "cmd_internal_hook_pi_session_end",
@@ -79,4 +105,5 @@ __all__ = [
     "cmd_internal_hook_pi_agent_settled",
     "cmd_internal_hook_pi_tool_call",
     "cmd_internal_hook_pi_tool_result",
+    "cmd_internal_hook_pi_jump",
 ]

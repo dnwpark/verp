@@ -45,6 +45,7 @@ from verp.pi_terminal import cmd_pi
 from verp.pi_hooks import (
     cmd_internal_hook_pi_agent_settled,
     cmd_internal_hook_pi_agent_start,
+    cmd_internal_hook_pi_jump,
     cmd_internal_hook_pi_session_end,
     cmd_internal_hook_pi_session_start,
     cmd_internal_hook_pi_tool_call,
@@ -263,6 +264,10 @@ def main() -> None:
     p_pi_hook_tool_result.add_argument("directory")
     p_pi_hook_tool_result.add_argument("tool")
     p_pi_hook_tool_result.add_argument("timestamp", type=int)
+    p_pi_hook_jump = pi_sub.add_parser("hook_jump")
+    p_pi_hook_jump.add_argument("session_id")
+    p_pi_hook_jump.add_argument("directory")
+    p_pi_hook_jump.add_argument("timestamp", type=int)
 
     argcomplete.autocomplete(parser, always_complete_options=False)
     args = parser.parse_args()
@@ -389,5 +394,11 @@ def main() -> None:
             sys.exit(
                 cmd_internal_hook_pi_tool_result(
                     args.session_id, args.directory, args.tool, args.timestamp
+                )
+            )
+        elif args.pi_command == "hook_jump":
+            sys.exit(
+                cmd_internal_hook_pi_jump(
+                    args.session_id, args.directory, args.timestamp
                 )
             )
