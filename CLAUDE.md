@@ -21,6 +21,7 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
 - `src/verp/claude_dir.py` — managed `CLAUDE_DIR` content versioning and sync
 - `src/verp/pi_dir.py` — managed `pi-extension.ts` versioning and deployment
 - `src/verp/claude_hooks.py` — Claude lifecycle hook handlers (`cmd_internal_hook_*`)
+- `src/verp/pi_hooks.py` — pi lifecycle hook handlers (`cmd_internal_hook_pi_*`)
 - `src/verp/claude_permission_hook.py` — permission dialog and socket communication
 - `src/verp/commands.py` — business logic command implementations (`cmd_*`)
 - `src/verp/db.py` — SQLite layer and schema migrations
@@ -77,6 +78,7 @@ DB schema migrations run automatically on startup via `init_db()`. Each migratio
 - `waiting_prompt` — waiting for user input
 - `waiting_permission` — waiting for a permission decision
 - `asking_question` — Claude is asking the user a question via AskUserQuestion
+- `compacting` — the agent is compacting its conversation (pi only)
 - `paused` — manually set via the monitor (`p`) to de-emphasize idle agents
 
 ## Agent kind values

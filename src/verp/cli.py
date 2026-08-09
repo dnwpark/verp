@@ -45,6 +45,8 @@ from verp.pi_terminal import cmd_pi
 from verp.pi_hooks import (
     cmd_internal_hook_pi_agent_settled,
     cmd_internal_hook_pi_agent_start,
+    cmd_internal_hook_pi_compact_end,
+    cmd_internal_hook_pi_compact_start,
     cmd_internal_hook_pi_jump,
     cmd_internal_hook_pi_session_end,
     cmd_internal_hook_pi_session_start,
@@ -264,6 +266,15 @@ def main() -> None:
     p_pi_hook_tool_result.add_argument("directory")
     p_pi_hook_tool_result.add_argument("tool")
     p_pi_hook_tool_result.add_argument("timestamp", type=int)
+    p_pi_hook_compact_start = pi_sub.add_parser("hook_compact_start")
+    p_pi_hook_compact_start.add_argument("session_id")
+    p_pi_hook_compact_start.add_argument("directory")
+    p_pi_hook_compact_start.add_argument("timestamp", type=int)
+    p_pi_hook_compact_end = pi_sub.add_parser("hook_compact_end")
+    p_pi_hook_compact_end.add_argument("session_id")
+    p_pi_hook_compact_end.add_argument("directory")
+    p_pi_hook_compact_end.add_argument("reason")
+    p_pi_hook_compact_end.add_argument("timestamp", type=int)
     p_pi_hook_jump = pi_sub.add_parser("hook_jump")
     p_pi_hook_jump.add_argument("session_id")
     p_pi_hook_jump.add_argument("directory")
@@ -394,6 +405,21 @@ def main() -> None:
             sys.exit(
                 cmd_internal_hook_pi_tool_result(
                     args.session_id, args.directory, args.tool, args.timestamp
+                )
+            )
+        elif args.pi_command == "hook_compact_start":
+            sys.exit(
+                cmd_internal_hook_pi_compact_start(
+                    args.session_id, args.directory, args.timestamp
+                )
+            )
+        elif args.pi_command == "hook_compact_end":
+            sys.exit(
+                cmd_internal_hook_pi_compact_end(
+                    args.session_id,
+                    args.directory,
+                    args.reason,
+                    args.timestamp,
                 )
             )
         elif args.pi_command == "hook_jump":

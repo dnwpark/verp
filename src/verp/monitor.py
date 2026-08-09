@@ -79,6 +79,7 @@ def focus_existing_monitor() -> bool:
 
 _STATUS_STYLE = {
     AgentStatus.WORKING: "fg:ansigreen",
+    AgentStatus.COMPACTING: "fg:ansigreen",
     AgentStatus.WAITING_PROMPT: "fg:ansiyellow",
     AgentStatus.ASKING_QUESTION: "fg:#ff8700",
     AgentStatus.WAITING_PERMISSION: "fg:#ff8700",

@@ -73,6 +73,34 @@ def cmd_internal_hook_pi_tool_result(
     return 0
 
 
+def cmd_internal_hook_pi_compact_start(
+    session_id: str, directory: str, timestamp: int
+) -> int:
+    if not directory:
+        return 0
+    set_agent_status(
+        session_id, directory, AgentStatus.COMPACTING, timestamp, AgentKind.PI
+    )
+    reset_agent_tool(session_id)
+    return 0
+
+
+def cmd_internal_hook_pi_compact_end(
+    session_id: str, directory: str, reason: str, timestamp: int
+) -> int:
+    if not directory:
+        return 0
+    # Manual `/compact` runs while idle; auto-compaction (threshold/overflow)
+    # runs mid-turn and continues working afterward.
+    status = (
+        AgentStatus.WAITING_PROMPT
+        if reason == "manual"
+        else AgentStatus.WORKING
+    )
+    set_agent_status(session_id, directory, status, timestamp, AgentKind.PI)
+    return 0
+
+
 def cmd_internal_hook_pi_jump(
     session_id: str, directory: str, timestamp: int
 ) -> int:
@@ -105,5 +133,7 @@ __all__ = [
     "cmd_internal_hook_pi_agent_settled",
     "cmd_internal_hook_pi_tool_call",
     "cmd_internal_hook_pi_tool_result",
+    "cmd_internal_hook_pi_compact_start",
+    "cmd_internal_hook_pi_compact_end",
     "cmd_internal_hook_pi_jump",
 ]

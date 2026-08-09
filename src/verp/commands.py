@@ -632,6 +632,8 @@ def _build_agent_table() -> Table:
         sid = f"{prefix}-{agent.session_id[:8]}"
         if agent.status == AgentStatus.WORKING:
             color = "green"
+        elif agent.status == AgentStatus.COMPACTING:
+            color = "green"
         elif agent.status == AgentStatus.WAITING_PROMPT:
             color = "yellow"
         elif agent.status == AgentStatus.PAUSED:

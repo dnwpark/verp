@@ -17,6 +17,7 @@ class AgentStatus(StrEnum):
     WAITING_PROMPT = "waiting_prompt"
     WAITING_PERMISSION = "waiting_permission"
     ASKING_QUESTION = "asking_question"
+    COMPACTING = "compacting"
     PAUSED = "paused"
 
 

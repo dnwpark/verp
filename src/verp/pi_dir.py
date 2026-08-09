@@ -8,7 +8,7 @@ from verp.paths import DATA_DIR, PI_DIR
 
 _PI_PACKAGE_DIR = Path(__file__).parent / "_pi"  # contains verp.ts and skills/
 
-PI_DIR_VERSION = 5
+PI_DIR_VERSION = 6
 
 
 def _migrate_to_v1(conn: sqlite3.Connection) -> None:
@@ -54,12 +54,20 @@ def _migrate_to_v5(conn: sqlite3.Connection) -> None:
     shutil.copy2(src, dest)
 
 
+def _migrate_to_v6(conn: sqlite3.Connection) -> None:
+    # Redeploy updated verp.ts (compaction hooks: hook_compact_start/end).
+    src = _PI_PACKAGE_DIR / "verp.ts"
+    dest = DATA_DIR / "pi-extension.ts"
+    shutil.copy2(src, dest)
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
     3: _migrate_to_v3,
     4: _migrate_to_v4,
     5: _migrate_to_v5,
+    6: _migrate_to_v6,
 }
 
 

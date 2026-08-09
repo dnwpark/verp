@@ -63,6 +63,16 @@ export default function (pi: ExtensionAPI) {
     if (id) hook("hook_tool_result", id, ctx.cwd, event.toolName);
   });
 
+  pi.on("session_before_compact", async (_event, ctx) => {
+    const id = sessionId(ctx);
+    if (id) hook("hook_compact_start", id, ctx.cwd);
+  });
+
+  pi.on("session_compact", async (event, ctx) => {
+    const id = sessionId(ctx);
+    if (id) hook("hook_compact_end", id, ctx.cwd, event.reason);
+  });
+
   // Managed skills directory: DATA_DIR/pi_dir/skills/
   // DATA_DIR matches verp's paths.py: $VERP_DATA_DIR or ~/.local/share/verp
   const dataDir =

@@ -124,6 +124,7 @@ Each row shows:
 | `waiting_prompt` | yellow | Agent is waiting for user input |
 | `waiting_permission` | orange | Agent is waiting for a permission decision |
 | `asking_question` | orange | Agent is asking the user a question |
+| `compacting` | green | Agent is compacting its conversation (pi only) |
 | `paused` | grey | Manually set as paused |
 
 Note: Only one instance runs at a time — launching a second `verp agent monitor` focuses the existing one instead of opening a new window.
@@ -178,6 +179,7 @@ User-customizable Claude config lives in `CONFIG_DIR` (`~/.config/verp/`):
 | `src/verp/paths.py` | All path constants (`DATA_DIR`, `CLAUDE_DIR`, `PI_DIR`, `CONFIG_DIR`, `USER_CLAUDE_DIR`) |
 | `src/verp/claude_dir.py` | Managed `CLAUDE_DIR` content versioning and sync |
 | `src/verp/pi_dir.py` | Managed `pi-extension.ts` versioning and deployment |
+| `src/verp/pi_hooks.py` | pi lifecycle hook handlers (`cmd_internal_hook_pi_*`) |
 | `src/verp/pi_terminal.py` | Subprocess launcher and `cmd_pi` |
 | `src/verp/claude_permission_hook.py` | Permission dialog rendering and socket communication |
 | `src/verp/status.py` | Rich-formatted git status display |
