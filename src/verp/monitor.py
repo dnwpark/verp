@@ -23,6 +23,7 @@ from verp.db import (
     get_all_agents,
     is_project_dir,
     set_agent_status_by_session,
+    toggle_agent_pin,
 )
 from verp.focus import focus_by_tty, pid_to_tty
 
@@ -106,7 +107,7 @@ class AgentMonitor:
         self._app: Application[None] = self._build_app()
 
     def _sorted_agents(self, agents: list[AgentInfo]) -> list[AgentInfo]:
-        return sorted(agents, key=lambda a: a.directory)
+        return sorted(agents, key=lambda a: (not a.pinned, a.directory))
 
     def _render_table(self) -> StyleAndTextTuples:
         result: StyleAndTextTuples = []
@@ -137,15 +138,17 @@ class AgentMonitor:
             )
             sid_short = agent.session_id.split("_", 1)[-1][:8]
             sid_label = f"{prefix}-{sid_short}"
-            result.append((row + "bold", f"  {sid_label}  ", handler))
+            id_style = row + "bold" if agent.pinned else row
+            result.append((id_style, f"  {sid_label}  ", handler))
 
+            dir_bold = "bold " if agent.pinned else ""
             for style, text in dir_parts:
-                result.append((row + style, text, handler))
+                result.append((row + dir_bold + style, text, handler))
             result.append((row, " " * (dir_w - len(dir_text) + 2), handler))
 
             result.append(
                 (
-                    row + _STATUS_STYLE.get(agent.status, ""),
+                    row + dir_bold + _STATUS_STYLE.get(agent.status, ""),
                     status_str,
                     handler,
                 )
@@ -178,7 +181,7 @@ class AgentMonitor:
         return [
             (
                 "class:status-bar",
-                "  ↑↓ navigate   Enter focus   p pause/unpause   Del clear   q quit",
+                "  ↑↓ navigate   Enter focus   p pause/unpause   P pin/unpin   Del clear   q quit",
             )
         ]
 
@@ -214,6 +217,10 @@ class AgentMonitor:
         @kb.add("p")
         def _pause(event: KeyPressEvent) -> None:
             self._toggle_paused()
+
+        @kb.add("P")
+        def _pin(event: KeyPressEvent) -> None:
+            self._toggle_pin()
 
         @kb.add("delete")
         def _delete(event: KeyPressEvent) -> None:
@@ -264,6 +271,12 @@ class AgentMonitor:
             else AgentStatus.PAUSED
         )
         set_agent_status_by_session(agent.session_id, new_status)
+
+    def _toggle_pin(self) -> None:
+        if self._selected is None or self._selected >= len(self._agents):
+            return
+        agent = self._agents[self._selected]
+        toggle_agent_pin(agent.session_id)
 
     def _focus_selected(self) -> None:
         if self._selected is None or self._selected >= len(self._agents):

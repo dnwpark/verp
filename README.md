@@ -114,8 +114,11 @@ Each row shows:
 | `Enter` | Focus the selected agent's terminal window |
 | `Esc` | Deselect |
 | `p` | Toggle pause/unpause on selected agent |
+| `P` | Toggle pin/unpin on selected agent |
 | `Delete` | Clear selected agent entry (see `verp agent clear`) |
 | `q` / `Ctrl+C` | Quit |
+
+Pinned agents sort to the top of the list. Their session ID, directory, and status are displayed in **bold** to distinguish them from unpinned agents.
 
 **Status colors:**
 | Status | Color | Meaning |

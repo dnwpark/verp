@@ -81,6 +81,8 @@ DB schema migrations run automatically on startup via `init_db()`. Each migratio
 - `compacting` — the agent is compacting its conversation (pi only)
 - `paused` — manually set via the monitor (`p`) to de-emphasize idle agents
 
+Agents can be **pinned** via the monitor (`P`) to sort them to the top. Pinned agents are visually distinguished by bold text on their session ID, directory, and status. Pinning does not affect agent status or `updated_at`.
+
 ## Agent kind values
 
 The `agent_type` column on the `agents` table identifies which AI agent is running:

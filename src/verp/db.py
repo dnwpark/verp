@@ -46,10 +46,11 @@ class AgentInfo:
     verp_pid: int | None = None
     terminal: TerminalInfo | None = None
     agent_type: AgentKind = AgentKind.CLAUDE
+    pinned: bool = False
 
 
 _VERSIONS_DIR = Path(__file__).parent / "_versions"
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 23
 
 
 def _db_path(data_dir: Path) -> Path:
@@ -207,6 +208,12 @@ def _migrate_to_v22(conn: sqlite3.Connection, data_dir: Path) -> None:
     )
 
 
+def _migrate_to_v23(conn: sqlite3.Connection, data_dir: Path) -> None:
+    conn.execute(
+        "ALTER TABLE agents ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
+    )
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection, Path], None]] = {
     1: _migrate_to_v1,
     2: _migrate_to_v2,
@@ -230,6 +237,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection, Path], None]] = {
     20: _migrate_to_v20,
     21: _migrate_to_v21,
     22: _migrate_to_v22,
+    23: _migrate_to_v23,
 }
 
 
@@ -499,6 +507,16 @@ def set_agent_status_by_session(session_id: str, status: AgentStatus) -> None:
             )
 
 
+def toggle_agent_pin(session_id: str) -> None:
+    """Toggle the pinned flag for an agent (does not affect status or updated_at)."""
+    with _db() as conn:
+        with conn:
+            conn.execute(
+                "UPDATE agents SET pinned = NOT pinned WHERE session_id = ?",
+                (session_id,),
+            )
+
+
 def has_agent_by_verp_pid(verp_pid: int) -> bool:
     if not _db_path(DATA_DIR).exists():
         return False
@@ -605,7 +623,7 @@ def _terminal_from_row(row: sqlite3.Row) -> TerminalInfo | None:
 
 _AGENT_COLUMNS = (
     "SELECT session_id, directory, status, tool, updated_at, verp_pid,"
-    "       terminal_app, terminal_data, agent_type"
+    "       terminal_app, terminal_data, agent_type, pinned"
     " FROM agents"
 )
 
@@ -624,6 +642,7 @@ def _agent_info_from_row(row: sqlite3.Row) -> AgentInfo:
         verp_pid=int(row["verp_pid"]) if row["verp_pid"] is not None else None,
         terminal=_terminal_from_row(row),
         agent_type=agent_type,
+        pinned=bool(row["pinned"]),
     )
 
 
