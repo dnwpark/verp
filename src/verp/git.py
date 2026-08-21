@@ -1,3 +1,4 @@
+import re
 import subprocess
 from pathlib import Path
 
@@ -124,12 +125,42 @@ def branch_delete(
     return run(["git", "branch", "-D", branch], cwd=repo_dir, check=False)
 
 
+_REF_PATTERNS = [
+    # 'refs/foo' exists; cannot create 'refs/bar'
+    re.compile(r"error: '(refs/[^']+)' exists; cannot create"),
+    # cannot lock ref 'refs/foo': is at <sha> but expected <sha>
+    re.compile(r"error: cannot lock ref '(refs/[^']+)'"),
+]
+
+
+def _resolve_ref_conflicts(stderr: str, path: Path) -> None:
+    """Prune dead remote refs and forcibly delete any local refs that block incoming ones."""
+    run(["git", "remote", "prune", "origin"], cwd=path, check=False)
+    for pattern in _REF_PATTERNS:
+        for m in pattern.finditer(stderr):
+            run(["git", "update-ref", "-d", m.group(1)], cwd=path, check=False)
+
+
+def _prune_and_retry(
+    cmd: list[str], path: Path
+) -> subprocess.CompletedProcess[str]:
+    result = run(cmd, cwd=path, check=False)
+    combined = result.stderr + result.stdout
+    if (
+        any(p.search(combined) for p in _REF_PATTERNS)
+        or "remote prune origin" in combined
+    ):
+        _resolve_ref_conflicts(result.stderr, path)
+        result = run(cmd, cwd=path, check=False)
+    return result
+
+
 def pull(repo_dir: Path) -> subprocess.CompletedProcess[str]:
-    return run(["git", "pull", "--ff-only"], cwd=repo_dir, check=False)
+    return _prune_and_retry(["git", "pull", "--ff-only"], repo_dir)
 
 
 def fetch(path: Path) -> subprocess.CompletedProcess[str]:
-    return run(["git", "fetch"], cwd=path, check=False)
+    return _prune_and_retry(["git", "fetch"], path)
 
 
 # clone/rebase/push use subprocess.run() directly (not run()) so that git's
