@@ -108,6 +108,10 @@ def worktree_remove(
     )
 
 
+def worktree_prune(repo_dir: Path) -> subprocess.CompletedProcess[str]:
+    return run(["git", "worktree", "prune"], cwd=repo_dir, check=False)
+
+
 def branch_exists(repo_dir: Path, branch: str) -> bool:
     return (
         run(

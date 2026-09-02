@@ -27,6 +27,7 @@ from verp.git import (
     REPO_DIR,
     ahead_behind,
     branch_delete,
+    worktree_prune,
     branch_exists,
     branch_prefix,
     clone,
@@ -212,6 +213,8 @@ def cmd_remove(repo: str) -> int:
         if result.returncode != 0:
             err(f"failed to remove worktree: {result.stderr.strip()}")
             return 1
+    else:
+        worktree_prune(rp)
 
     if branch_exists(rp, branch):
         result = branch_delete(rp, branch)
