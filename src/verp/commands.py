@@ -193,6 +193,7 @@ def cmd_remove(repo: str) -> int:
     name = project_info.name
     project_dir = Path(project_info.path)
     branch = project_info.branch
+    repo = repo.rstrip("/")
 
     if not is_repo_in_project(name, repo):
         err(f"'{repo}' is not associated with project '{name}'")
