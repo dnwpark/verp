@@ -503,6 +503,56 @@ def cmd_repo_clone(url: str) -> int:
     return clone(url)
 
 
+def cmd_repo_remove(repo: str) -> int:
+    repo = repo.rstrip("/")
+    rp = REPO_DIR / repo
+
+    projects = projects_using_repo(repo)
+    if not projects:
+        err(f"'{repo}' is not used by any project")
+        return 1
+
+    rc = 0
+    for project_name in projects:
+        project_info = get_project(project_name)
+        if project_info is None:
+            continue
+        project_dir = Path(project_info.path)
+        branch = project_info.branch
+
+        print_repo_status(repo, project_dir, branch)
+        answer = (
+            input(f"\nremove from '{project_name}'? [y/N] ").strip().lower()
+        )
+        if answer != "y":
+            print("skipped")
+            continue
+
+        wt = project_dir / repo
+        if wt.is_dir():
+            result = worktree_remove(rp, wt)
+            if result.returncode != 0:
+                err(f"failed to remove worktree: {result.stderr.strip()}")
+                rc = 1
+                continue
+        else:
+            worktree_prune(rp)
+
+        if branch_exists(rp, branch):
+            result = branch_delete(rp, branch)
+            if result.returncode != 0:
+                err(
+                    f"failed to delete branch {branch}: {result.stderr.strip()}"
+                )
+                rc = 1
+                continue
+
+        remove_repo_from_project(project_name, repo)
+        print(f"removed '{repo}' from project '{project_name}'")
+
+    return rc
+
+
 def cmd_repo_unclone(repo: str) -> int:
     rp = REPO_DIR / repo
     if not rp.is_dir():

@@ -32,6 +32,7 @@ from verp.commands import (
     cmd_remove,
     cmd_repo_clone,
     cmd_repo_list,
+    cmd_repo_remove,
     cmd_repo_unclone,
     cmd_status,
     cmd_where,
@@ -166,6 +167,10 @@ def main() -> None:
     repo_sub.add_parser("list", help="list all repos")
     p_repo_clone = repo_sub.add_parser("clone", help="clone a repo")
     p_repo_clone.add_argument("url", help="git URL to clone")
+    p_repo_remove = repo_sub.add_parser(
+        "remove", help="remove a repo from all projects"
+    )
+    p_repo_remove.add_argument("repo", help="repo name")
     p_repo_unclone = repo_sub.add_parser(
         "unclone", help="delete a local repo clone"
     )
@@ -310,6 +315,8 @@ def main() -> None:
             sys.exit(cmd_repo_list())
         elif args.repo_command == "clone":
             sys.exit(cmd_repo_clone(args.url))
+        elif args.repo_command == "remove":
+            sys.exit(cmd_repo_remove(args.repo))
         elif args.repo_command == "unclone":
             sys.exit(cmd_repo_unclone(args.repo))
     elif args.command == "agent":
