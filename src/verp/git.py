@@ -159,8 +159,35 @@ def _prune_and_retry(
     return result
 
 
-def pull(repo_dir: Path) -> subprocess.CompletedProcess[str]:
-    return _prune_and_retry(["git", "pull", "--ff-only"], repo_dir)
+def rev_parse(path: Path, ref: str) -> str | None:
+    result = run(["git", "rev-parse", ref], cwd=path, check=False)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def diff_shortstat(path: Path, old: str, new: str) -> str:
+    result = run(
+        ["git", "diff", "--shortstat", old, new], cwd=path, check=False
+    )
+    return result.stdout.strip()
+
+
+def reset_to_origin(
+    repo_dir: Path, branch: str
+) -> subprocess.CompletedProcess[str]:
+    """Force the checkout to origin/<branch>, discarding local state.
+
+    Central repos are mirrors, so any local changes (e.g. from an
+    interrupted update) are thrown away. `checkout -f -B` rather than
+    `reset --hard` so we never clobber some other checked-out branch.
+    """
+    result = run(
+        ["git", "checkout", "-f", "-B", branch, f"origin/{branch}"],
+        cwd=repo_dir,
+        check=False,
+    )
+    if result.returncode != 0:
+        return result
+    return run(["git", "clean", "-fd"], cwd=repo_dir, check=False)
 
 
 def fetch(path: Path) -> subprocess.CompletedProcess[str]:

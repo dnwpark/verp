@@ -154,7 +154,7 @@ Press `Ctrl+\` in any `verp claude` session to focus a running monitor window. F
 
 All persistent state lives in `DATA_DIR` (`~/.local/share/verp/`):
 - `verp.db` — SQLite database with `projects`, `agents`, and `config` tables
-- `repos/` — Git clones used as worktree sources; not bare — bare clones do not set up `refs/remotes/origin/HEAD`, which is needed to identify the primary branch
+- `repos/` — Git clones used as worktree sources; not bare — bare clones do not set up `refs/remotes/origin/HEAD`, which is needed to identify the primary branch. Treated as mirrors: `verp pull` resets them to `origin/<primary>`, discarding any local changes
 - `track.sh` — shell hook handler deployed by migrations, called by Claude on every hook event
 - `claude-settings.json` — Claude hook registration config
 - `monitor.pid` — singleton lock file for the agent monitor (`pid:tty` format)

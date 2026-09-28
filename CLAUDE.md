@@ -49,7 +49,7 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
 
 All persistent state lives in `DATA_DIR` (`~/.local/share/verp/`):
 - `verp.db` — SQLite database (schema version defined by `SCHEMA_VERSION` in `db.py`)
-- `repos/` — central repo store (`REPO_DIR` in `git.py`); not bare — bare clones do not set up `refs/remotes/origin/HEAD`, which `primary_branch()` relies on
+- `repos/` — central repo store (`REPO_DIR` in `git.py`); not bare — bare clones do not set up `refs/remotes/origin/HEAD`, which `primary_branch()` relies on. Treated as mirrors: `verp pull` fetches then force-checks-out `origin/<primary>` and runs `git clean -fd`, discarding any local state
 - `track.sh` — hook handler deployed by migrations
 - `claude-settings.json` — Claude hook registration config
 - `monitor.pid` — singleton lock file for the agent monitor (JSON `MonitorLock`)

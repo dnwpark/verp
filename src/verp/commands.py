@@ -36,10 +36,12 @@ from verp.git import (
     fetch,
     is_git_repo,
     primary_branch,
-    pull,
+    diff_shortstat,
     push,
     rebase,
     remote_url,
+    reset_to_origin,
+    rev_parse,
     run,
     worktree_add,
     worktree_changes,
@@ -569,6 +571,36 @@ def cmd_repo_unclone(repo: str) -> int:
     return 0
 
 
+def _sync_repo(repo: str, rp: Path) -> int:
+    result = fetch(rp)
+    if result.returncode != 0:
+        err(f"fetch failed for {repo}:\n{result.stderr.strip()}")
+        return 1
+
+    primary = primary_branch(rp)
+    if primary is None:
+        err(f"could not determine primary branch for {repo}")
+        return 1
+
+    changed, untracked = worktree_changes(rp)
+    if changed or untracked:
+        print(f"  discarding {changed} changed, {untracked} untracked files")
+
+    old = rev_parse(rp, "HEAD")
+    result = reset_to_origin(rp, primary)
+    if result.returncode != 0:
+        err(f"reset failed for {repo}:\n{result.stderr.strip()}")
+        return 1
+    new = rev_parse(rp, "HEAD")
+
+    if old is None or new is None or old == new:
+        print("  already up to date")
+    else:
+        stat = diff_shortstat(rp, old, new)
+        print(f"  {old[:10]}..{new[:10]}" + (f"  {stat}" if stat else ""))
+    return 0
+
+
 def _pull_repos(repos: list[str]) -> int:
     rc = 0
     for repo in repos:
@@ -576,13 +608,7 @@ def _pull_repos(repos: list[str]) -> int:
         if not rp.is_dir() or not is_git_repo(rp):
             continue
         print(f"pulling {repo}...")
-        result = pull(rp)
-        if result.returncode != 0:
-            err(f"pull failed for {repo}:\n{result.stderr.strip()}")
-            rc = 1
-        else:
-            output = result.stdout.strip()
-            print(f"  {output if output else 'ok'}")
+        rc |= _sync_repo(repo, rp)
     return rc
 
 
