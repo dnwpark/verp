@@ -1,16 +1,36 @@
 from pathlib import Path
 
 from rich.console import Console
+from rich.markup import escape
 
 from verp.git import (
     REPO_DIR,
     ahead_behind,
     current_branch,
+    head_state,
     primary_branch,
     worktree_changes,
 )
 
 console = Console()
+
+
+def _repo_header(name: str, wt: Path, project_branch: str | None) -> str:
+    """`name (branch)`: omitted if on the project branch, grey if on another
+    branch, yellow if detached or mid-rebase."""
+    if not wt.is_dir():
+        return escape(name)
+    state = head_state(wt)
+    if state is None:
+        return escape(name)
+    label, abnormal = state
+    if abnormal:
+        colour = "yellow"
+    elif label == project_branch:
+        return escape(name)
+    else:
+        colour = "grey70"
+    return f"{escape(name)} [{colour}]({escape(label)})[/{colour}]"
 
 
 def _branch_vs_primary_lines(
@@ -113,8 +133,10 @@ def _print_status_lines(
             console.print(f"{indent}  {line}")
 
 
-def print_untracked_repo_status(path: Path, indent: str = "  ") -> None:
-    print(f"{indent}{path.name}")
+def print_untracked_repo_status(
+    path: Path, project_branch: str | None = None, indent: str = "  "
+) -> None:
+    console.print(f"{indent}{_repo_header(path.name, path, project_branch)}")
     branch = current_branch(path)
     if branch is None:
         console.print(f"{indent}  [red]could not determine branch[/red]")
@@ -170,7 +192,7 @@ def print_repo_status(
 ) -> None:
     wt = project_dir / repo
     rp = REPO_DIR / repo
-    print(f"{indent}{repo}")
+    console.print(f"{indent}{_repo_header(repo, wt, branch)}")
 
     if not wt.is_dir():
         console.print(f"{indent}  [red]worktree missing[/red]")

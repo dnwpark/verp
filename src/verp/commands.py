@@ -269,7 +269,7 @@ def cmd_status() -> int:
     for path in extra_git_dirs(project_dir, project_info.repos):
         if printed:
             print()
-        print_untracked_repo_status(path)
+        print_untracked_repo_status(path, project_info.branch)
         printed += 1
 
     return 0

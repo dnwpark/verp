@@ -45,6 +45,33 @@ def current_branch(path: Path) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def head_state(path: Path) -> tuple[str, bool] | None:
+    """Return (label, abnormal) describing what HEAD points at.
+
+    abnormal is True for detached HEAD or an in-progress rebase. Returns
+    None if HEAD cannot be determined.
+    """
+    for name in ("rebase-merge", "rebase-apply"):
+        result = run(
+            ["git", "rev-parse", "--git-path", name], cwd=path, check=False
+        )
+        if result.returncode != 0:
+            continue
+        rebase_dir = path / result.stdout.strip()
+        if rebase_dir.is_dir():
+            head_name = rebase_dir / "head-name"
+            if head_name.is_file():
+                ref = head_name.read_text().strip()
+                return f"rebasing {ref.removeprefix('refs/heads/')}", True
+            return "rebasing", True
+    branch = current_branch(path)
+    if branch is None:
+        return None
+    if branch == "HEAD":
+        return "detached", True
+    return branch, False
+
+
 def remote_url(repo_dir: Path) -> str | None:
     result = run(
         ["git", "remote", "get-url", "origin"], cwd=repo_dir, check=False
