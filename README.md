@@ -184,6 +184,7 @@ User-customizable Claude config lives in `CONFIG_DIR` (`~/.config/verp/`):
 | `src/verp/pi_dir.py` | Managed `pi-extension.ts` versioning and deployment |
 | `src/verp/pi_hooks.py` | pi lifecycle hook handlers (`cmd_internal_hook_pi_*`) |
 | `src/verp/pi_terminal.py` | Subprocess launcher and `cmd_pi` |
+| `src/verp/agent_launch.py` | Shared launch helpers for `verp claude` / `verp pi` (`agent_env`, `get_project_system_prompt`) |
 | `src/verp/claude_permission_hook.py` | Permission dialog rendering and socket communication |
 | `src/verp/status.py` | Rich-formatted git status display |
 | `src/verp/project.py` | Project migration logic for config updates |

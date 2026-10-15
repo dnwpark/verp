@@ -17,6 +17,7 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
 - `_claude/` — bundled managed Claude config (skills, CLAUDE.md); symlinked into package as `src/verp/_claude`
 - `src/verp/_versions/` — versioned `track.sh` and `claude_settings.json` per schema version
 - `src/verp/agent.py` — shared agent display utilities (`format_age`, `directory_parts`)
+- `src/verp/agent_launch.py` — shared launch helpers for `verp claude` / `verp pi` (`agent_env`, `get_project_system_prompt`)
 - `src/verp/cli.py` — entry point: `main()`, argparse setup, and dispatch
 - `src/verp/claude_dir.py` — managed `CLAUDE_DIR` content versioning and sync
 - `src/verp/pi_dir.py` — managed `pi-extension.ts` versioning and deployment

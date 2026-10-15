@@ -12,7 +12,7 @@ from verp.claude_permission_hook import (
     _query_cursor_pos,
     handle_permission_request,
 )
-from verp.commands import get_current_project
+from verp.agent_launch import agent_env, get_project_system_prompt
 from verp.agent import AgentKind
 from verp.db import (
     AgentStatus,
@@ -30,16 +30,6 @@ from verp.time import now_ms
 def _set_winsize(fd: int) -> None:
     size = fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b"\x00" * 8)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, size)
-
-
-def get_project_system_prompt() -> str | None:
-    project_info = get_current_project()
-    if project_info is None:
-        return None
-    return (
-        f"You are working inside a verp project named '{project_info.name}' "
-        f"at {project_info.path}."
-    )
 
 
 def _build_claude_cmd(args: list[str]) -> list[str]:
@@ -212,7 +202,7 @@ def cmd_claude(args: list[str]) -> int:
     pid, master_fd = pty.fork()
     if pid == 0:
         listen_sock.close()
-        env = os.environ.copy()
+        env = agent_env()
         env["CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD"] = "1"
         os.execvpe(cmd[0], cmd, env)
 

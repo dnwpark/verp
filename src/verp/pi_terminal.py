@@ -1,7 +1,7 @@
 import os
 import subprocess
 
-from verp.claude_terminal import get_project_system_prompt
+from verp.agent_launch import agent_env, get_project_system_prompt
 from verp.db import remove_agents_by_pid
 from verp.paths import DATA_DIR
 
@@ -17,7 +17,7 @@ def _build_pi_cmd(args: list[str]) -> list[str]:
 
 def cmd_pi(args: list[str]) -> int:
     cmd = _build_pi_cmd(args)
-    env = os.environ.copy()
+    env = agent_env()
     env["VERP_PID"] = str(os.getpid())
     try:
         result = subprocess.run(cmd, env=env)
