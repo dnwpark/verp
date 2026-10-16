@@ -6,6 +6,8 @@
 uv run black src/ && uv run mypy src/ && uv tool install -e .
 ```
 
+Run tests with `uv run pytest`. The Claude permission dialog tests (`tests/test_permission_dialogs.py`) drive a real Claude session in tmux and take 30+ minutes; they are skipped unless `VERP_CLAUDE_TESTS=1` is set.
+
 When adding a new source file, update the file list in both `CLAUDE.md` and `README.md`.
 
 When adding a new agent status value, update the status table in both `CLAUDE.md` and `README.md`.

@@ -6,6 +6,7 @@ Uses tmux as the terminal backend so tests work headlessly in CI.
 
 from __future__ import annotations
 
+import os
 import shutil
 import time
 from collections.abc import Generator
@@ -113,6 +114,11 @@ def _run_scenario_test(
 
 
 pytestmark = [
+    # Drives real Claude sessions (API calls, rate-limit sleeps; 30+ minutes).
+    pytest.mark.skipif(
+        not os.environ.get("VERP_CLAUDE_TESTS"),
+        reason="set VERP_CLAUDE_TESTS=1 to run Claude dialog tests",
+    ),
     pytest.mark.skipif(
         shutil.which("claude") is None, reason="claude CLI not found"
     ),
