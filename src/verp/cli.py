@@ -39,6 +39,7 @@ from verp.commands import (
 )
 from verp.db import all_project_infos, init_db
 from verp.git import REPO_DIR
+from verp.issues import cli as issues_cli
 from verp.paths import DATA_DIR
 from verp.project import init_project
 from verp.claude_terminal import cmd_claude
@@ -84,6 +85,7 @@ def main() -> None:
           pull                     pull repos and fetch worktrees
           repo                     manage git repos
           agent                    manage agents
+          issue                    track issues
           claude [args...]         launch claude with verp hooks
           pi [args...]            launch pi with verp hooks
 
@@ -186,6 +188,8 @@ def main() -> None:
         "focus", help="focus terminal window of an agent"
     )
     p_agent_focus.add_argument("id", help="session ID prefix")
+
+    issues_cli.register(sub)
 
     p_verp_claude = sub.add_parser(
         "claude", help="launch claude with verp hooks"
@@ -328,6 +332,8 @@ def main() -> None:
             sys.exit(cmd_agent_clear(args.id))
         elif args.agent_command == "focus":
             sys.exit(cmd_agent_focus(args.id))
+    elif args.command == "issue":
+        sys.exit(issues_cli.dispatch(args))
     elif args.command == "_claude":
         if args.claude_command == "hook_session_start":
             sys.exit(

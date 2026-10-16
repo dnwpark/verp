@@ -40,6 +40,12 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
   - `_focusers/_tmux.py` — tmux pane focuser
   - `_focusers/_wezterm.py` — WezTerm CLI focuser
 - `src/verp/git.py` — git subprocess wrappers
+- `src/verp/issues/` — issue tracker (self-contained; own DB)
+  - `cli.py` — `register(sub)` argparse setup and `dispatch(args)`
+  - `commands.py` — `cmd_issue_*` implementations
+  - `db.py` — `issues.db` SQLite layer and migrations (`SCHEMA_VERSION` here is independent of `verp.db`)
+  - `identity.py` — caller identity (`VERP_PROJECT`, cwd fallback) and ownership rules
+  - `model.py` — `Issue`, `Event`, `IssueStatus`, `EventKind`
 - `src/verp/monitor.py` — interactive agent monitor TUI (prompt_toolkit)
 - `src/verp/paths.py` — all path constants (`DATA_DIR`, `CLAUDE_DIR`, `PI_DIR`, `CONFIG_DIR`, `USER_CLAUDE_DIR`) and socket path helpers
 - `src/verp/project.py` — project migration logic
@@ -52,6 +58,7 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
 
 All persistent state lives in `DATA_DIR` (`~/.local/share/verp/`):
 - `verp.db` — SQLite database (schema version defined by `SCHEMA_VERSION` in `db.py`)
+- `issues.db` — issue tracker database (`issues`, `issue_deps`, `issue_events`); WAL mode; migrations in `issues/db.py`, run lazily on first `verp issue` use
 - `repos/` — central repo store (`REPO_DIR` in `git.py`); not bare — bare clones do not set up `refs/remotes/origin/HEAD`, which `primary_branch()` relies on. Treated as mirrors: `verp pull` fetches then force-checks-out `origin/<primary>` and runs `git clean -fd`, discarding any local state
 - `track.sh` — hook handler deployed by migrations
 - `claude-settings.json` — Claude hook registration config
@@ -68,6 +75,17 @@ DB schema migrations run automatically on startup via `init_db()`. Each migratio
 `claude_dir/` content is versioned separately via `CLAUDE_DIR_VERSION` in `claude_dir.py` and tracked in the `config` table. When updating bundled content in `_claude/`, increment `CLAUDE_DIR_VERSION` and add an entry to `_MIGRATIONS` in `claude_dir.py`.
 
 `pi-extension.ts` and `pi_dir/` are versioned together via `PI_DIR_VERSION` in `pi_dir.py` and tracked in the `config` table. When updating `src/verp/_pi/verp.ts` or any content in `src/verp/_pi/skills/`, increment `PI_DIR_VERSION` and add an entry to `_MIGRATIONS` in `pi_dir.py`.
+
+## Issue tracker
+
+Each issue is owned by one project (`project` column) or is in the backlog (`NULL`). Ownership rules live in `issues/identity.py`:
+- The caller is an `Actor` (`kind`, `project`). `kind` is `worker` if `VERP_WORKER` is set, `agent` if `VERP_PID` / `VERP_SOCKET` is set, otherwise `cli` (the human operator).
+- Agents and workers are identified by `VERP_PROJECT`, set at launch (empty if launched outside a project); `cli` falls back to the cwd.
+- Only the owning project may modify an issue; closed issues are frozen.
+- The operator (not an agent) may bypass ownership when outside a project or with `--force`. Agents can never use `--force`.
+- `assign` rejects bodies containing the source project's path or branch (handoff must be self-contained).
+
+All changes are recorded in the append-only `issue_events` table, with `actor_kind` and `actor_project` (no session IDs; they are not stable).
 
 ## Hook integration
 

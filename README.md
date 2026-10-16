@@ -95,6 +95,25 @@ verp agent focus <id>       # Focus the terminal window running an agent
 
 `verp agent clear` is mainly useful for agents that did not properly terminate. Cleared agents re-appear if they send another status update.
 
+### Issues
+
+A lightweight issue tracker for agents to track tasks, log progress, and hand work off between projects. Each issue is owned by one project (or sits unowned in the backlog), and only that project's agent may modify it.
+
+```bash
+verp issue add <title> [--body ... | --body-file <path|->] [--backlog]
+verp issue list [--project P | --backlog | --all] [--status S] [--closed] [--json]
+verp issue show <id> [--json]
+verp issue edit <id> [--title ...] [--body ... | --body-file ...]
+verp issue log <id> <message>       # append a progress note
+verp issue start <id>               # mark in progress
+verp issue close <id> --outcome ... [--dropped]   # outcome is required
+verp issue claim <id>               # take a backlog issue
+verp issue release <id> <reason>    # return to the backlog
+verp issue assign <id> <project>    # hand off to another project
+```
+
+Ownership: `verp claude` / `verp pi` set `VERP_PROJECT` at launch, which identifies the agent regardless of `cd`. Agents can only modify issues owned by their project, and closed issues are frozen. The human operator (no `VERP_PID`) may bypass this when outside a project or with `--force`. `assign` rejects briefs that mention the source project's path or branch, so the receiving agent gets a self-contained handoff.
+
 #### Agent Monitor
 
 ![Agent monitor screenshot](images/agent-monitor.png)
@@ -154,6 +173,7 @@ Press `Ctrl+\` in any `verp claude` session to focus a running monitor window. F
 
 All persistent state lives in `DATA_DIR` (`~/.local/share/verp/`):
 - `verp.db` — SQLite database with `projects`, `agents`, and `config` tables
+- `issues.db` — issue tracker SQLite database (`issues`, `issue_deps`, `issue_events`), with its own schema version in `issues/db.py`
 - `repos/` — Git clones used as worktree sources; not bare — bare clones do not set up `refs/remotes/origin/HEAD`, which is needed to identify the primary branch. Treated as mirrors: `verp pull` resets them to `origin/<primary>`, discarding any local changes
 - `track.sh` — shell hook handler deployed by migrations, called by Claude on every hook event
 - `claude-settings.json` — Claude hook registration config
@@ -189,6 +209,7 @@ User-customizable Claude config lives in `CONFIG_DIR` (`~/.config/verp/`):
 | `src/verp/status.py` | Rich-formatted git status display |
 | `src/verp/project.py` | Project migration logic for config updates |
 | `src/verp/_versions/` | Versioned `track.sh` and `claude_settings.json` for each schema version |
+| `src/verp/issues/` | Issue tracker: `cli.py` (argparse), `commands.py` (`cmd_issue_*`), `db.py` (`issues.db` and migrations), `identity.py` (caller identity and ownership rules), `model.py` (dataclasses and enums) |
 | `src/verp/focus/` | Terminal window focus module (extensible, platform/terminal dispatch) |
 | `_claude/` | Bundled managed Claude config (skills, CLAUDE.md); symlinked into package as `src/verp/_claude` |
 
