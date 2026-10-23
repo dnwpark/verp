@@ -343,12 +343,78 @@ def test_close(dropped: bool, status: IssueStatus) -> None:
     assert issue.closed_at is not None
 
 
-def test_reopen_clears_closed_at() -> None:
+def test_close_records_outcome_in_history() -> None:
+    i = add(ALPHA)
+    close(ALPHA, i, "the outcome")
+    last = events(i)[-1]
+    assert (last.kind, last.message) == (EventKind.DONE, "the outcome")
+
+
+def test_start_event() -> None:
+    i = add(ALPHA)
+    commands.cmd_issue_start(ALPHA, i, False)
+    assert events(i)[-1].kind == EventKind.STARTED
+
+
+# --- reopen ----------------------------------------------------------------
+
+
+def test_reopen_keeps_owner_and_history() -> None:
+    i = add(ALPHA)
+    close(ALPHA, i, "first try")
+    assert commands.cmd_issue_reopen(CLI, i, " regressed ") == 0
+    issue = get(i)
+    assert issue.status == IssueStatus.OPEN
+    assert issue.project == "alpha"
+    assert issue.outcome is None and issue.closed_at is None
+    kinds = [(e.kind, e.message) for e in events(i)[-2:]]
+    assert kinds == [
+        (EventKind.DONE, "first try"),
+        (EventKind.REOPENED, "regressed"),
+    ]
+    # The owner can work on it again.
+    assert commands.cmd_issue_log(ALPHA, i, "again", False) == 0
+
+
+def test_reopen_dropped() -> None:
+    i = add(ALPHA)
+    commands.cmd_issue_close(ALPHA, i, "not needed", None, True, False)
+    assert commands.cmd_issue_reopen(CLI_BETA, i, "needed after all") == 0
+    assert get(i).status == IssueStatus.OPEN
+    assert events(i)[-2].kind == EventKind.DROPPED
+
+
+@pytest.mark.parametrize(
+    "caller", [ALPHA, WORKER_BETA], ids=["agent", "worker"]
+)
+def test_reopen_operator_only(
+    capsys: pytest.CaptureFixture[str], caller: Actor
+) -> None:
     i = add(ALPHA)
     close(ALPHA, i)
-    with db.connect() as c:
-        db.set_status(c, i, IssueStatus.OPEN)
-    assert get(i).closed_at is None
+    rc, _, err = run(capsys, commands.cmd_issue_reopen, caller, i, "why")
+    assert rc == 1 and "only the operator" in err
+    assert get(i).status == IssueStatus.DONE
+
+
+def test_reopen_rules(capsys: pytest.CaptureFixture[str]) -> None:
+    i = add(ALPHA)
+    rc, _, err = run(capsys, commands.cmd_issue_reopen, CLI, i, "why")
+    assert rc == 1 and "not closed" in err
+    close(ALPHA, i)
+    rc, _, err = run(capsys, commands.cmd_issue_reopen, CLI, i, "  ")
+    assert rc == 1 and "reason is required" in err
+    rc, _, err = run(capsys, commands.cmd_issue_reopen, CLI, 99, "why")
+    assert rc == 1 and "no issue 99" in err
+
+
+def test_reopen_restores_blocking(capsys: pytest.CaptureFixture[str]) -> None:
+    a, b = add(ALPHA), add(ALPHA)
+    commands.cmd_issue_dep_add(ALPHA, b, [a], False)
+    close(ALPHA, a)
+    assert next_issue(capsys, ALPHA)["id"] == b
+    commands.cmd_issue_reopen(CLI, a, "regressed")
+    assert next_issue(capsys, ALPHA)["id"] == a
 
 
 # --- claim / release -------------------------------------------------------

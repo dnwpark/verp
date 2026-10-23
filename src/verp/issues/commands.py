@@ -369,13 +369,7 @@ def cmd_issue_start(caller: Actor, issue_id: int, force: bool) -> int:
             return _err(f"issue {issue_id} is {issue.status}")
         with conn:
             db.set_status(conn, issue_id, IssueStatus.IN_PROGRESS)
-            db.add_event(
-                conn,
-                issue_id,
-                caller,
-                EventKind.STATUS,
-                str(IssueStatus.IN_PROGRESS),
-            )
+            db.add_event(conn, issue_id, caller, EventKind.STARTED)
     print(f"started #{issue_id}")
     return 0
 
@@ -402,8 +396,32 @@ def cmd_issue_close(
             return _err(issue)
         with conn:
             db.set_status(conn, issue_id, status, outcome=text)
-            db.add_event(conn, issue_id, caller, EventKind.STATUS, str(status))
+            # The outcome is also kept in the history, so it survives reopen.
+            kind = EventKind.DROPPED if dropped else EventKind.DONE
+            db.add_event(conn, issue_id, caller, kind, text)
     print(f"closed #{issue_id} ({status})")
+    return 0
+
+
+def cmd_issue_reopen(caller: Actor, issue_id: int, reason: str) -> int:
+    """Operator only. Returns a closed issue to `open` under the same owner;
+    the previous outcome remains in the history."""
+    if caller.is_agent:
+        return _err("only the operator can reopen issues")
+    if not reason.strip():
+        return _err("a reason is required")
+    with db.connect() as conn:
+        issue = db.get_issue(conn, issue_id)
+        if issue is None:
+            return _err(f"no issue {issue_id}")
+        if not issue.status.closed:
+            return _err(f"issue {issue_id} is {issue.status}, not closed")
+        with conn:
+            db.set_status(conn, issue_id, IssueStatus.OPEN)
+            db.add_event(
+                conn, issue_id, caller, EventKind.REOPENED, reason.strip()
+            )
+    print(f"reopened #{issue_id}")
     return 0
 
 

@@ -36,7 +36,10 @@ class EventKind(StrEnum):
     CREATED = "created"
     EDITED = "edited"
     LOG = "log"
-    STATUS = "status"
+    STARTED = "started"
+    DONE = "done"  # message: the outcome
+    DROPPED = "dropped"  # message: the reason
+    REOPENED = "reopened"  # message: the reason
     CLAIMED = "claimed"
     RELEASED = "released"
     ASSIGNED = "assigned"

@@ -111,6 +111,7 @@ verp issue edit <id> [--title ...] [--body ... | --body-file ...]
 verp issue log <id> <message>       # append a progress note
 verp issue start <id>               # mark in progress
 verp issue close <id> --outcome ... [--dropped]   # outcome is required
+verp issue reopen <id> <reason>     # operator only; outcome stays in history
 verp issue claim <id>               # take a backlog issue
 verp issue release <id> <reason>    # return to the backlog
 verp issue assign <id> <project>    # hand off to another project

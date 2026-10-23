@@ -81,7 +81,7 @@ DB schema migrations run automatically on startup via `init_db()`. Each migratio
 Each issue is owned by one project (`project` column) or is in the backlog (`NULL`). Ownership rules live in `issues/identity.py`:
 - The caller is an `Actor` (`kind`, `project`). `kind` is `worker` if `VERP_WORKER` is set, `agent` if `VERP_PID` / `VERP_SOCKET` is set, otherwise `cli` (the human operator).
 - Agents and workers are identified by `VERP_PROJECT`, set at launch (empty if launched outside a project); `cli` falls back to the cwd.
-- Only the owning project may modify an issue; closed issues are frozen.
+- Only the owning project may modify an issue; closed issues are frozen. Only the operator can `reopen`; agents open a follow-up issue instead.
 - The operator (not an agent) may bypass ownership when outside a project or with `--force`. Agents can never use `--force`.
 - `assign` rejects bodies containing the source project's path or branch (handoff must be self-contained).
 

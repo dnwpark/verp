@@ -14,6 +14,7 @@ from verp.issues.commands import (
     cmd_issue_log,
     cmd_issue_next,
     cmd_issue_release,
+    cmd_issue_reopen,
     cmd_issue_show,
     cmd_issue_start,
 )
@@ -147,6 +148,10 @@ def register(sub: "argparse._SubParsersAction[Any]") -> None:
     )
     _add_force(p)
 
+    p = isub.add_parser("reopen", help="reopen a closed issue (operator only)")
+    p.add_argument("id", type=int)
+    p.add_argument("reason")
+
     p = isub.add_parser(
         "claim", help="take a backlog issue for the current project"
     )
@@ -215,6 +220,8 @@ def dispatch(args: argparse.Namespace) -> int:
             args.dropped,
             args.force,
         )
+    if c == "reopen":
+        return cmd_issue_reopen(caller, args.id, args.reason)
     if c == "claim":
         return cmd_issue_claim(caller, args.id, args.force)
     if c == "release":
