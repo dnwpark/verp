@@ -40,6 +40,8 @@ class EventKind(StrEnum):
     CLAIMED = "claimed"
     RELEASED = "released"
     ASSIGNED = "assigned"
+    DEP_ADDED = "dep_added"
+    DEP_REMOVED = "dep_removed"
 
 
 @dataclass

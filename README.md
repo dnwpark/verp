@@ -101,7 +101,11 @@ A lightweight issue tracker for agents to track tasks, log progress, and hand wo
 
 ```bash
 verp issue add <title> [--body ... | --body-file <path|->] [--backlog]
-verp issue list [--project P | --backlog | --all] [--status S] [--closed] [--json]
+verp issue list [--project P | --backlog | --all] [--status S] [--closed] [--ready | --blocked] [--json]
+verp issue next [--project P | --backlog] [--json]   # in progress first, then oldest ready
+verp issue deps <id> [--down] [--depth N] [--json]  # dependency tree
+verp issue dep add <id> <dep>...    # <id> depends on <dep>s (cycles rejected)
+verp issue dep rm <id> <dep>...
 verp issue show <id> [--json]
 verp issue edit <id> [--title ...] [--body ... | --body-file ...]
 verp issue log <id> <message>       # append a progress note

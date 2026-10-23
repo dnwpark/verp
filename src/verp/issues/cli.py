@@ -6,9 +6,13 @@ from verp.issues.commands import (
     cmd_issue_assign,
     cmd_issue_claim,
     cmd_issue_close,
+    cmd_issue_dep_add,
+    cmd_issue_dep_rm,
+    cmd_issue_deps,
     cmd_issue_edit,
     cmd_issue_list,
     cmd_issue_log,
+    cmd_issue_next,
     cmd_issue_release,
     cmd_issue_show,
     cmd_issue_start,
@@ -63,7 +67,56 @@ def register(sub: "argparse._SubParsersAction[Any]") -> None:
     p.add_argument(
         "--closed", action="store_true", help="include done/dropped issues"
     )
+    readiness = p.add_mutually_exclusive_group()
+    readiness.add_argument(
+        "--ready",
+        dest="readiness",
+        action="store_const",
+        const="ready",
+        help="only issues whose dependencies are all closed",
+    )
+    readiness.add_argument(
+        "--blocked",
+        dest="readiness",
+        action="store_const",
+        const="blocked",
+        help="only issues waiting on open dependencies",
+    )
     _add_json(p)
+
+    p = isub.add_parser(
+        "next",
+        help="the issue to work on next (in progress first, then oldest ready)",
+    )
+    scope = p.add_mutually_exclusive_group()
+    scope.add_argument("--project", help="for this project")
+    scope.add_argument(
+        "--backlog", action="store_true", help="from the backlog"
+    )
+    _add_json(p)
+
+    p = isub.add_parser("deps", help="show an issue's dependency tree")
+    p.add_argument("id", type=int)
+    p.add_argument(
+        "--down",
+        action="store_true",
+        help="show what depends on this issue instead",
+    )
+    p.add_argument("--depth", type=int, help="maximum depth")
+    _add_json(p)
+
+    p = isub.add_parser("dep", help="add or remove dependencies")
+    dsub = p.add_subparsers(dest="dep_command", required=True)
+    for name, help_text in (
+        ("add", "make an issue depend on others"),
+        ("rm", "remove dependencies"),
+    ):
+        dp = dsub.add_parser(name, help=help_text)
+        dp.add_argument("id", type=int, help="the dependent issue")
+        dp.add_argument(
+            "deps", type=int, nargs="+", help="issues it depends on"
+        )
+        _add_force(dp)
 
     p = isub.add_parser("edit", help="edit an issue's title or body")
     p.add_argument("id", type=int)
@@ -134,7 +187,17 @@ def dispatch(args: argparse.Namespace) -> int:
             args.status,
             args.closed,
             args.json,
+            args.readiness,
         )
+    if c == "next":
+        return cmd_issue_next(caller, args.project, args.backlog, args.json)
+    if c == "deps":
+        return cmd_issue_deps(args.id, args.down, args.depth, args.json)
+    if c == "dep":
+        fn = (
+            cmd_issue_dep_add if args.dep_command == "add" else cmd_issue_dep_rm
+        )
+        return fn(caller, args.id, args.deps, args.force)
     if c == "edit":
         return cmd_issue_edit(
             caller, args.id, args.title, args.body, args.body_file, args.force

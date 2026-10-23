@@ -47,9 +47,12 @@ def conn(
 
 
 def run(
-    capsys: pytest.CaptureFixture[str], fn: Callable[..., int], *args: Any
+    capsys: pytest.CaptureFixture[str],
+    fn: Callable[..., int],
+    *args: Any,
+    **kwargs: Any,
 ) -> tuple[int, str, str]:
-    rc = fn(*args)
+    rc = fn(*args, **kwargs)
     out, err = capsys.readouterr()
     return rc, out, err
 
@@ -449,3 +452,211 @@ def test_cli_can_force_leaky_assign(capsys: pytest.CaptureFixture[str]) -> None:
 def test_handoff_violations_ignores_backlog() -> None:
     i = add(CLI, "t", "/work/alpha", backlog=True)
     assert identity.handoff_violations(get(i)) == []
+
+
+# --- dependencies ----------------------------------------------------------
+
+
+def dep_add(
+    caller: Actor, issue_id: int, *deps: int, force: bool = False
+) -> int:
+    return commands.cmd_issue_dep_add(caller, issue_id, list(deps), force)
+
+
+def dep_rm(
+    caller: Actor, issue_id: int, *deps: int, force: bool = False
+) -> int:
+    return commands.cmd_issue_dep_rm(caller, issue_id, list(deps), force)
+
+
+def test_dep_add_and_rm() -> None:
+    a, b, c = add(ALPHA), add(ALPHA), add(ALPHA)
+    assert dep_add(ALPHA, c, a, b) == 0
+    assert get(c).depends_on == [a, b]
+    assert [e.message for e in events(c)[-2:]] == [f"#{a}", f"#{b}"]
+    assert events(c)[-1].kind == EventKind.DEP_ADDED
+
+    assert dep_rm(ALPHA, c, a) == 0
+    assert get(c).depends_on == [b]
+    assert events(c)[-1].kind == EventKind.DEP_REMOVED
+
+
+def test_dep_add_rejects_invalid(capsys: pytest.CaptureFixture[str]) -> None:
+    a, b = add(ALPHA), add(ALPHA)
+    dep_add(ALPHA, b, a)
+    capsys.readouterr()
+    for args, msg in [
+        ((b, b), "cannot depend on itself"),
+        ((b, 99), "no issue 99"),
+        ((b, a), "already depends on"),
+        ((a, b), "would create a cycle"),
+    ]:
+        rc, _, err = run(capsys, dep_add, ALPHA, *args)
+        assert rc == 1 and msg in err, (args, err)
+
+
+def test_dep_add_rejects_transitive_cycle(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    a, b, c = add(ALPHA), add(ALPHA), add(ALPHA)
+    dep_add(ALPHA, b, a)
+    dep_add(ALPHA, c, b)
+    rc, _, err = run(capsys, dep_add, ALPHA, a, c)
+    assert rc == 1 and "cycle" in err
+
+
+def test_dep_add_is_all_or_nothing(capsys: pytest.CaptureFixture[str]) -> None:
+    a, b = add(ALPHA), add(ALPHA)
+    assert run(capsys, dep_add, ALPHA, b, a, 99)[0] == 1
+    assert get(b).depends_on == []
+
+
+def test_dep_rm_missing(capsys: pytest.CaptureFixture[str]) -> None:
+    a, b = add(ALPHA), add(ALPHA)
+    rc, _, err = run(capsys, dep_rm, ALPHA, b, a)
+    assert rc == 1 and "does not depend on" in err
+
+
+def test_dep_ownership(capsys: pytest.CaptureFixture[str]) -> None:
+    mine, theirs = add(ALPHA), add(BETA)
+    # Any issue may be depended on...
+    assert dep_add(ALPHA, mine, theirs) == 0
+    # ...but only the owner edits an issue's dependencies.
+    rc, _, err = run(capsys, dep_add, BETA, mine, theirs)
+    assert rc == 1 and "belongs to project 'alpha'" in err
+    assert run(capsys, dep_rm, BETA, mine, theirs, force=True)[0] == 1
+
+
+def test_depends_transitively(conn: sqlite3.Connection) -> None:
+    a, b, c, d = (add(ALPHA) for _ in range(4))
+    dep_add(ALPHA, b, a)
+    dep_add(ALPHA, c, b)
+    assert db.depends_transitively(conn, c, a)
+    assert not db.depends_transitively(conn, a, c)
+    assert not db.depends_transitively(conn, d, a)
+
+
+def test_list_ready_and_blocked(capsys: pytest.CaptureFixture[str]) -> None:
+    a, b = add(ALPHA, "first"), add(ALPHA, "second")
+    dep_add(ALPHA, b, a)
+
+    def titles(readiness: str) -> list[str]:
+        capsys.readouterr()
+        commands.cmd_issue_list(
+            ALPHA, None, False, False, None, False, True, readiness
+        )
+        return [i["title"] for i in json.loads(capsys.readouterr().out)]
+
+    assert titles("ready") == ["first"]
+    assert titles("blocked") == ["second"]
+    close(ALPHA, a)
+    assert titles("ready") == ["second"]
+    assert titles("blocked") == []
+
+
+def test_json_includes_blocked_by_and_dependents(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    a, b = add(ALPHA), add(ALPHA)
+    dep_add(ALPHA, b, a)
+    capsys.readouterr()
+    [_, item_b] = json.loads(list_out(capsys, ALPHA, as_json=True))
+    assert item_b["blocked_by"] == [a]
+
+    _, out, _ = run(capsys, commands.cmd_issue_show, a, True)
+    assert json.loads(out)["dependents"] == [b]
+
+
+# --- next ------------------------------------------------------------------
+
+
+def next_issue(
+    capsys: pytest.CaptureFixture[str],
+    caller: Actor,
+    project: str | None = None,
+    backlog: bool = False,
+) -> Any:
+    capsys.readouterr()
+    assert commands.cmd_issue_next(caller, project, backlog, True) == 0
+    return json.loads(capsys.readouterr().out)
+
+
+def test_next_oldest_ready(capsys: pytest.CaptureFixture[str]) -> None:
+    a, b, c = add(ALPHA), add(ALPHA), add(ALPHA)
+    dep_add(ALPHA, a, c)
+    assert next_issue(capsys, ALPHA)["id"] == b
+    close(ALPHA, b)
+    assert next_issue(capsys, ALPHA)["id"] == c
+    close(ALPHA, c)
+    assert next_issue(capsys, ALPHA)["id"] == a
+
+
+def test_next_prefers_in_progress(capsys: pytest.CaptureFixture[str]) -> None:
+    add(ALPHA)
+    b = add(ALPHA)
+    commands.cmd_issue_start(ALPHA, b, False)
+    assert next_issue(capsys, ALPHA)["id"] == b
+
+
+def test_next_scope(capsys: pytest.CaptureFixture[str]) -> None:
+    backlog = add(CLI, backlog=True)
+    theirs = add(BETA)
+    assert next_issue(capsys, ALPHA) is None
+    assert next_issue(capsys, NO_PROJECT)["id"] == backlog
+    assert next_issue(capsys, ALPHA, project="beta")["id"] == theirs
+    assert next_issue(capsys, ALPHA, backlog=True)["id"] == backlog
+
+
+def test_next_none_lists_blocked(capsys: pytest.CaptureFixture[str]) -> None:
+    a = add(BETA)
+    b = add(ALPHA, "waiting")
+    dep_add(ALPHA, b, a)
+    capsys.readouterr()
+    rc, out, _ = run(capsys, commands.cmd_issue_next, ALPHA, None, False, False)
+    assert rc == 0
+    assert "no ready issues" in out and "waiting" in out and f"#{a}" in out
+
+
+# --- deps tree -------------------------------------------------------------
+
+
+def deps_tree(
+    capsys: pytest.CaptureFixture[str],
+    issue_id: int,
+    down: bool = False,
+    depth: int | None = None,
+) -> Any:
+    capsys.readouterr()
+    assert commands.cmd_issue_deps(issue_id, down, depth, True) == 0
+    return json.loads(capsys.readouterr().out)
+
+
+def ids(node: Any) -> Any:
+    return [node["id"], [ids(c) for c in node["children"]]]
+
+
+def test_deps_tree_up_and_down(capsys: pytest.CaptureFixture[str]) -> None:
+    a, b, c = add(ALPHA), add(ALPHA), add(ALPHA)
+    dep_add(ALPHA, b, a)
+    dep_add(ALPHA, c, b)
+    assert ids(deps_tree(capsys, c)) == [c, [[b, [[a, []]]]]]
+    assert ids(deps_tree(capsys, a, down=True)) == [a, [[b, [[c, []]]]]]
+    assert ids(deps_tree(capsys, c, depth=1)) == [c, [[b, []]]]
+
+
+def test_deps_tree_marks_repeats(capsys: pytest.CaptureFixture[str]) -> None:
+    # Diamond: d -> b -> a, d -> c -> a
+    a, b, c, d = (add(ALPHA) for _ in range(4))
+    dep_add(ALPHA, b, a)
+    dep_add(ALPHA, c, a)
+    dep_add(ALPHA, d, b, c)
+    tree = deps_tree(capsys, d)
+    first_a = tree["children"][0]["children"][0]
+    second_a = tree["children"][1]["children"][0]
+    assert first_a["id"] == second_a["id"] == a
+    assert not first_a["repeat"] and second_a["repeat"]
+
+
+def test_deps_missing(capsys: pytest.CaptureFixture[str]) -> None:
+    rc, _, err = run(capsys, commands.cmd_issue_deps, 99, False, None, False)
+    assert rc == 1 and "no issue 99" in err

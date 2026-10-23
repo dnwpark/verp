@@ -194,6 +194,50 @@ def get_events(conn: sqlite3.Connection, issue_id: int) -> list[Event]:
     ]
 
 
+def dependents(conn: sqlite3.Connection, issue_id: int) -> list[int]:
+    """Issues that directly depend on issue_id."""
+    return [
+        int(r[0])
+        for r in conn.execute(
+            "SELECT issue_id FROM issue_deps WHERE depends_on = ?"
+            " ORDER BY issue_id",
+            (issue_id,),
+        )
+    ]
+
+
+def depends_transitively(
+    conn: sqlite3.Connection, issue_id: int, target: int
+) -> bool:
+    """True if issue_id depends on target, directly or indirectly."""
+    row = conn.execute(
+        """
+        WITH RECURSIVE up(id) AS (
+            SELECT depends_on FROM issue_deps WHERE issue_id = ?
+            UNION
+            SELECT d.depends_on FROM issue_deps d JOIN up ON d.issue_id = up.id
+        )
+        SELECT 1 FROM up WHERE id = ? LIMIT 1
+        """,
+        (issue_id, target),
+    ).fetchone()
+    return row is not None
+
+
+def open_deps(conn: sqlite3.Connection, issue_id: int) -> list[int]:
+    """Direct dependencies of issue_id that are not yet closed."""
+    return [
+        int(r[0])
+        for r in conn.execute(
+            "SELECT d.depends_on FROM issue_deps d"
+            " JOIN issues i ON i.id = d.depends_on"
+            " WHERE d.issue_id = ? AND i.status NOT IN (?, ?)"
+            " ORDER BY d.depends_on",
+            (issue_id, str(IssueStatus.DONE), str(IssueStatus.DROPPED)),
+        )
+    ]
+
+
 # --- writes ----------------------------------------------------------------
 # Callers are responsible for permission checks and for wrapping in a
 # transaction (`with conn:`).
@@ -219,6 +263,26 @@ def add_event(
             message,
         ),
     )
+
+
+def add_dep(conn: sqlite3.Connection, issue_id: int, depends_on: int) -> None:
+    conn.execute(
+        "INSERT INTO issue_deps (issue_id, depends_on) VALUES (?, ?)",
+        (issue_id, depends_on),
+    )
+    touch(conn, issue_id)
+
+
+def remove_dep(
+    conn: sqlite3.Connection, issue_id: int, depends_on: int
+) -> bool:
+    cur = conn.execute(
+        "DELETE FROM issue_deps WHERE issue_id = ? AND depends_on = ?",
+        (issue_id, depends_on),
+    )
+    if cur.rowcount:
+        touch(conn, issue_id)
+    return cur.rowcount > 0
 
 
 def create_issue(
