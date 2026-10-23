@@ -462,10 +462,7 @@ def cmd_issue_release(
         if issue.project is None:
             return _err(f"issue {issue_id} is already in the backlog")
         with conn:
-            db.set_project(conn, issue_id, None)
-            if issue.status == IssueStatus.IN_PROGRESS:
-                db.set_status(conn, issue_id, IssueStatus.OPEN)
-            db.add_event(conn, issue_id, caller, EventKind.RELEASED, reason)
+            db.release_issue(conn, issue_id, caller, reason)
     print(f"released #{issue_id} to the backlog")
     return 0
 

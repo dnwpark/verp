@@ -48,6 +48,8 @@ from verp.git import (
     worktree_count,
     worktree_remove,
 )
+from verp.issues.identity import resolve_caller
+from verp.issues.orphans import open_issues, release_project_issues
 from verp.project import setup_new
 from verp.status import (
     console,
@@ -324,6 +326,12 @@ def cmd_delete() -> int:
     else:
         print(f"project '{name}' has no changes")
 
+    issues = open_issues(name)
+    if issues:
+        print("open issues will be released to the backlog:")
+        for issue in issues:
+            print(f"  #{issue.id} {issue.title}")
+
     answer = input("\ndelete? [y/N] ").strip().lower()
     if answer != "y":
         print("aborted")
@@ -354,6 +362,10 @@ def cmd_delete() -> int:
     subprocess.run(["rm", "-rf", str(project_dir)], check=True)
     delete_project(name)
     print(f"deleted '{name}'")
+    released = release_project_issues(name, resolve_caller())
+    if released:
+        n = len(released)
+        print(f"released {n} issue{'s' if n != 1 else ''} to the backlog")
     return 0
 
 

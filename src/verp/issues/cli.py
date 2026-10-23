@@ -18,8 +18,10 @@ from verp.issues.commands import (
     cmd_issue_show,
     cmd_issue_start,
 )
+from verp.issues import db
 from verp.issues.identity import resolve_caller
 from verp.issues.model import IssueStatus
+from verp.issues.orphans import reconcile_orphans
 
 
 def _add_force(p: argparse.ArgumentParser) -> None:
@@ -172,6 +174,8 @@ def register(sub: "argparse._SubParsersAction[Any]") -> None:
 def dispatch(args: argparse.Namespace) -> int:
     c = args.issue_command
     caller = resolve_caller()
+    with db.connect() as conn:
+        reconcile_orphans(conn, caller)
     if c == "add":
         return cmd_issue_add(
             caller,

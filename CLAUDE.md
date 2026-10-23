@@ -46,6 +46,7 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
   - `db.py` — `issues.db` SQLite layer and migrations (`SCHEMA_VERSION` here is independent of `verp.db`)
   - `identity.py` — caller identity (`VERP_PROJECT`, cwd fallback) and ownership rules
   - `model.py` — `Issue`, `Event`, `IssueStatus`, `EventKind`
+  - `orphans.py` — releasing open issues of deleted projects (`verp delete`, and a guarded repair before every `verp issue` command)
 - `src/verp/monitor.py` — interactive agent monitor TUI (prompt_toolkit)
 - `src/verp/paths.py` — all path constants (`DATA_DIR`, `CLAUDE_DIR`, `PI_DIR`, `CONFIG_DIR`, `USER_CLAUDE_DIR`) and socket path helpers
 - `src/verp/project.py` — project migration logic
@@ -84,6 +85,8 @@ Each issue is owned by one project (`project` column) or is in the backlog (`NUL
 - Only the owning project may modify an issue; closed issues are frozen. Only the operator can `reopen`; agents open a follow-up issue instead.
 - The operator (not an agent) may bypass ownership when outside a project or with `--force`. Agents can never use `--force`.
 - `assign` rejects bodies containing the source project's path or branch (handoff must be self-contained).
+
+Open issues are always owned by an existing project or in the backlog. `verp delete` releases the project's open issues; before every `verp issue` command, `reconcile_orphans` also releases open issues whose project is missing from `verp.db` (skipped if `verp.db` is unreadable or has no projects). Closed issues keep their project name as history.
 
 All changes are recorded in the append-only `issue_events` table, with `actor_kind` and `actor_project` (no session IDs; they are not stable).
 

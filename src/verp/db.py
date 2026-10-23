@@ -344,6 +344,22 @@ def delete_project(name: str) -> None:
             conn.execute("DELETE FROM projects WHERE name = ?", (name,))
 
 
+def project_names() -> set[str] | None:
+    """Names of all projects, or None if verp.db is missing or unreadable.
+
+    Distinguishes "no projects" from "cannot tell", for callers that act on
+    a project's absence.
+    """
+    if not _db_path(DATA_DIR).exists():
+        return None
+    try:
+        with _db() as conn:
+            rows = conn.execute("SELECT name FROM projects").fetchall()
+    except sqlite3.Error:
+        return None
+    return {str(r[0]) for r in rows}
+
+
 def all_project_infos() -> list[ProjectInfo]:
     if not _db_path(DATA_DIR).exists():
         return []

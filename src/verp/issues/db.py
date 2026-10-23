@@ -238,6 +238,33 @@ def open_deps(conn: sqlite3.Connection, issue_id: int) -> list[int]:
     ]
 
 
+_OPEN = (str(IssueStatus.OPEN), str(IssueStatus.IN_PROGRESS))
+
+
+def open_issue_ids(conn: sqlite3.Connection, project: str) -> list[int]:
+    """Open (or in-progress) issues owned by project."""
+    return [
+        int(r[0])
+        for r in conn.execute(
+            "SELECT id FROM issues WHERE project = ? AND status IN (?, ?)"
+            " ORDER BY id",
+            (project, *_OPEN),
+        )
+    ]
+
+
+def open_owner_projects(conn: sqlite3.Connection) -> set[str]:
+    """Projects that own at least one open (or in-progress) issue."""
+    return {
+        str(r[0])
+        for r in conn.execute(
+            "SELECT DISTINCT project FROM issues"
+            " WHERE project IS NOT NULL AND status IN (?, ?)",
+            _OPEN,
+        )
+    }
+
+
 # --- writes ----------------------------------------------------------------
 # Callers are responsible for permission checks and for wrapping in a
 # transaction (`with conn:`).
@@ -353,6 +380,19 @@ def set_project(
         (project, issue_id),
     )
     touch(conn, issue_id)
+
+
+def release_issue(
+    conn: sqlite3.Connection, issue_id: int, actor: Actor, reason: str
+) -> None:
+    """Return an issue to the backlog; in-progress work goes back to open."""
+    issue = get_issue(conn, issue_id)
+    if issue is None:
+        return
+    set_project(conn, issue_id, None)
+    if issue.status == IssueStatus.IN_PROGRESS:
+        set_status(conn, issue_id, IssueStatus.OPEN)
+    add_event(conn, issue_id, actor, EventKind.RELEASED, reason)
 
 
 def touch(conn: sqlite3.Connection, issue_id: int) -> None:

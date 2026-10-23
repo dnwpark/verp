@@ -119,6 +119,8 @@ verp issue assign <id> <project>    # hand off to another project
 
 Ownership: `verp claude` / `verp pi` set `VERP_PROJECT` at launch, which identifies the agent regardless of `cd`. Agents can only modify issues owned by their project, and closed issues are frozen. The human operator (no `VERP_PID`) may bypass this when outside a project or with `--force`. `assign` rejects briefs that mention the source project's path or branch, so the receiving agent gets a self-contained handoff.
 
+Deleting a project (`verp delete`) releases its open issues to the backlog; closed issues keep the project name as history. Open issues whose project has disappeared some other way are released automatically the next time `verp issue` runs.
+
 #### Agent Monitor
 
 ![Agent monitor screenshot](images/agent-monitor.png)
@@ -214,7 +216,7 @@ User-customizable Claude config lives in `CONFIG_DIR` (`~/.config/verp/`):
 | `src/verp/status.py` | Rich-formatted git status display |
 | `src/verp/project.py` | Project migration logic for config updates |
 | `src/verp/_versions/` | Versioned `track.sh` and `claude_settings.json` for each schema version |
-| `src/verp/issues/` | Issue tracker: `cli.py` (argparse), `commands.py` (`cmd_issue_*`), `db.py` (`issues.db` and migrations), `identity.py` (caller identity and ownership rules), `model.py` (dataclasses and enums) |
+| `src/verp/issues/` | Issue tracker: `cli.py` (argparse), `commands.py` (`cmd_issue_*`), `db.py` (`issues.db` and migrations), `identity.py` (caller identity and ownership rules), `model.py` (dataclasses and enums), `orphans.py` (releasing issues of deleted projects) |
 | `src/verp/focus/` | Terminal window focus module (extensible, platform/terminal dispatch) |
 | `_claude/` | Bundled managed Claude config (skills, CLAUDE.md); symlinked into package as `src/verp/_claude` |
 
