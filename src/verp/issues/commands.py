@@ -1,4 +1,5 @@
 import json
+import re
 import sqlite3
 import sys
 from dataclasses import asdict
@@ -285,6 +286,79 @@ def cmd_issue_deps(
         print(json.dumps(tree, indent=2))
     else:
         _print_tree(tree, 0)
+    return 0
+
+
+def _fts_query(text: str, any_term: bool, raw: bool) -> str | None:
+    """Build an FTS5 query. By default every word must match (AND); words are
+    quoted so punctuation in the input can't be misread as query syntax."""
+    if raw:
+        return text.strip() or None
+    terms = re.findall(r"\w+", text)
+    if not terms:
+        return None
+    return (" OR " if any_term else " ").join(f'"{t}"' for t in terms)
+
+
+def _snippet(snip: str, start: str, end: str) -> str:
+    flat = " ".join(snip.split())
+    return flat.replace(db.MATCH_START, start).replace(db.MATCH_END, end)
+
+
+def cmd_issue_search(
+    query: str,
+    project: str | None,
+    backlog: bool,
+    statuses: list[str] | None,
+    open_only: bool,
+    any_term: bool,
+    raw: bool,
+    limit: int,
+    as_json: bool,
+) -> int:
+    """Search all issues (any project, including closed) unless filtered."""
+    match = _fts_query(query, any_term, raw)
+    if match is None:
+        return _err("empty search query")
+    try:
+        status_filter = [IssueStatus(s) for s in statuses] if statuses else None
+    except ValueError as e:
+        return _err(str(e))
+    if status_filter is None and open_only:
+        status_filter = [s for s in IssueStatus if not s.closed]
+
+    with db.connect() as conn:
+        try:
+            hits = db.search_issues(
+                conn,
+                match,
+                project=project,
+                backlog=backlog,
+                statuses=status_filter,
+                limit=limit,
+            )
+        except sqlite3.OperationalError as e:
+            return _err(f"invalid search query: {e}")
+        data = []
+        for issue, snip in hits:
+            item = _issue_json(conn, issue)
+            item["snippet"] = _snippet(snip, "**", "**")
+            data.append(item)
+
+    if as_json:
+        print(json.dumps(data, indent=2))
+        return 0
+    if not hits:
+        print("no matching issues")
+        return 0
+    for issue, snip in hits:
+        owner = escape(issue.project) if issue.project else "backlog"
+        console.print(
+            f"  [grey70]#{issue.id:<4}[/grey70] {_status(issue.status, 11)}"
+            f" {escape(issue.title)}  [grey70]({owner})[/grey70]"
+        )
+        text = _snippet(escape(snip), "[bold yellow]", "[/bold yellow]")
+        console.print(f"        [grey70]{text}[/grey70]")
     return 0
 
 

@@ -107,6 +107,7 @@ verp issue deps <id> [--down] [--depth N] [--json]  # dependency tree
 verp issue dep add <id> <dep>...    # <id> depends on <dep>s (cycles rejected)
 verp issue dep rm <id> <dep>...
 verp issue show <id> [--json]
+verp issue search <query> [--project P | --backlog] [--status S] [--open] [--any] [--raw] [--limit N] [--json]
 verp issue edit <id> [--title ...] [--body ... | --body-file ...]
 verp issue log <id> <message>       # append a progress note
 verp issue start <id>               # mark in progress
@@ -180,7 +181,7 @@ Press `Ctrl+\` in any `verp claude` session to focus a running monitor window. F
 
 All persistent state lives in `DATA_DIR` (`~/.local/share/verp/`):
 - `verp.db` — SQLite database with `projects`, `agents`, and `config` tables
-- `issues.db` — issue tracker SQLite database (`issues`, `issue_deps`, `issue_events`), with its own schema version in `issues/db.py`
+- `issues.db` — issue tracker SQLite database (`issues`, `issue_deps`, `issue_events`, and the `issues_fts` full-text index), with its own schema version in `issues/db.py`
 - `repos/` — Git clones used as worktree sources; not bare — bare clones do not set up `refs/remotes/origin/HEAD`, which is needed to identify the primary branch. Treated as mirrors: `verp pull` resets them to `origin/<primary>`, discarding any local changes
 - `track.sh` — shell hook handler deployed by migrations, called by Claude on every hook event
 - `claude-settings.json` — Claude hook registration config

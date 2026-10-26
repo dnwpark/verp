@@ -15,6 +15,7 @@ from verp.issues.commands import (
     cmd_issue_next,
     cmd_issue_release,
     cmd_issue_reopen,
+    cmd_issue_search,
     cmd_issue_show,
     cmd_issue_start,
 )
@@ -85,6 +86,36 @@ def register(sub: "argparse._SubParsersAction[Any]") -> None:
         const="blocked",
         help="only issues waiting on open dependencies",
     )
+    _add_json(p)
+
+    p = isub.add_parser(
+        "search",
+        help="full-text search over titles, bodies, logs and outcomes",
+        description="Search all issues, in every project and including "
+        "closed ones, unless filtered. Every word must match by default.",
+    )
+    p.add_argument("query")
+    scope = p.add_mutually_exclusive_group()
+    scope.add_argument("--project", help="only this project's issues")
+    scope.add_argument("--backlog", action="store_true", help="unowned issues")
+    p.add_argument(
+        "--status",
+        action="append",
+        choices=[str(s) for s in IssueStatus],
+        help="filter by status (repeatable)",
+    )
+    p.add_argument(
+        "--open", action="store_true", help="exclude done/dropped issues"
+    )
+    p.add_argument(
+        "--any", action="store_true", help="match any word instead of all"
+    )
+    p.add_argument(
+        "--raw",
+        action="store_true",
+        help="pass the query through as FTS5 syntax (e.g. 'fetch OR prune', 'NEAR(fetch ref, 5)')",
+    )
+    p.add_argument("--limit", type=int, default=20, help="maximum results")
     _add_json(p)
 
     p = isub.add_parser(
@@ -197,6 +228,18 @@ def dispatch(args: argparse.Namespace) -> int:
             args.closed,
             args.json,
             args.readiness,
+        )
+    if c == "search":
+        return cmd_issue_search(
+            args.query,
+            args.project,
+            args.backlog,
+            args.status,
+            args.open,
+            args.any,
+            args.raw,
+            args.limit,
+            args.json,
         )
     if c == "next":
         return cmd_issue_next(caller, args.project, args.backlog, args.json)

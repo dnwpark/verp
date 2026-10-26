@@ -20,7 +20,7 @@ from verp.issues.model import (
 from verp.paths import DATA_DIR
 from verp.time import now_ms
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _db_path(data_dir: Path) -> Path:
@@ -66,8 +66,60 @@ def _migrate_to_v1(conn: sqlite3.Connection) -> None:
     )
 
 
+# Event kinds whose messages are searchable prose (notes, outcomes, reasons).
+# Frozen here as written by the v2 migration; changing it needs a migration.
+_FTS_NOTE_KINDS = "('log', 'done', 'dropped', 'reopened', 'released')"
+
+
+def _migrate_to_v2(conn: sqlite3.Connection) -> None:
+    # Full-text index: one row per issue (rowid = issue id). Kept in sync by
+    # triggers so every write path updates it. Events are append-only, so
+    # notes are only ever appended to.
+    conn.execute("""
+        CREATE VIRTUAL TABLE issues_fts USING fts5(
+            title, body, notes, tokenize = 'porter unicode61'
+        )
+    """)
+    conn.execute("""
+        CREATE TRIGGER issues_fts_insert AFTER INSERT ON issues BEGIN
+            INSERT INTO issues_fts (rowid, title, body, notes)
+            VALUES (new.id, new.title, new.body, '');
+        END
+    """)
+    conn.execute("""
+        CREATE TRIGGER issues_fts_update AFTER UPDATE OF title, body ON issues
+        BEGIN
+            UPDATE issues_fts SET title = new.title, body = new.body
+            WHERE rowid = new.id;
+        END
+    """)
+    conn.execute("""
+        CREATE TRIGGER issues_fts_delete AFTER DELETE ON issues BEGIN
+            DELETE FROM issues_fts WHERE rowid = old.id;
+        END
+    """)
+    conn.execute(f"""
+        CREATE TRIGGER issue_events_fts_insert AFTER INSERT ON issue_events
+        WHEN new.message IS NOT NULL AND new.kind IN {_FTS_NOTE_KINDS}
+        BEGIN
+            UPDATE issues_fts SET notes = notes || char(10) || new.message
+            WHERE rowid = new.issue_id;
+        END
+    """)
+    conn.execute(f"""
+        INSERT INTO issues_fts (rowid, title, body, notes)
+        SELECT i.id, i.title, i.body, COALESCE((
+            SELECT group_concat(e.message, char(10)) FROM issue_events e
+            WHERE e.issue_id = i.id AND e.message IS NOT NULL
+              AND e.kind IN {_FTS_NOTE_KINDS}
+        ), '')
+        FROM issues i
+    """)
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migrate_to_v1,
+    2: _migrate_to_v2,
 }
 
 
@@ -150,6 +202,22 @@ def get_issue(conn: sqlite3.Connection, issue_id: int) -> Issue | None:
     return _issue_from_row(conn, row) if row is not None else None
 
 
+def _filters(
+    project: str | None, backlog: bool, statuses: list[IssueStatus] | None
+) -> tuple[list[str], list[object]]:
+    where: list[str] = []
+    params: list[object] = []
+    if backlog:
+        where.append("i.project IS NULL")
+    elif project is not None:
+        where.append("i.project = ?")
+        params.append(project)
+    if statuses:
+        where.append(f"i.status IN ({','.join('?' * len(statuses))})")
+        params.extend(str(s) for s in statuses)
+    return where, params
+
+
 def list_issues(
     conn: sqlite3.Connection,
     *,
@@ -157,21 +225,47 @@ def list_issues(
     backlog: bool = False,
     statuses: list[IssueStatus] | None = None,
 ) -> list[Issue]:
-    where: list[str] = []
-    params: list[object] = []
-    if backlog:
-        where.append("project IS NULL")
-    elif project is not None:
-        where.append("project = ?")
-        params.append(project)
-    if statuses:
-        where.append(f"status IN ({','.join('?' * len(statuses))})")
-        params.extend(str(s) for s in statuses)
-    sql = "SELECT * FROM issues"
+    where, params = _filters(project, backlog, statuses)
+    sql = "SELECT i.* FROM issues i"
     if where:
         sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY project IS NOT NULL, project, id"
+    sql += " ORDER BY i.project IS NOT NULL, i.project, i.id"
     return [_issue_from_row(conn, r) for r in conn.execute(sql, params)]
+
+
+# Markers around matched terms in search snippets.
+MATCH_START = "\x01"
+MATCH_END = "\x02"
+
+
+def search_issues(
+    conn: sqlite3.Connection,
+    match: str,
+    *,
+    project: str | None = None,
+    backlog: bool = False,
+    statuses: list[IssueStatus] | None = None,
+    limit: int = 20,
+) -> list[tuple[Issue, str]]:
+    """Full-text search, best match first. `match` is an FTS5 query.
+
+    Returns (issue, snippet) pairs; matched terms in the snippet are wrapped
+    in MATCH_START / MATCH_END. Title matches weigh most, then body, then
+    notes (log messages, outcomes, reasons).
+    """
+    where, params = _filters(project, backlog, statuses)
+    sql = (
+        "SELECT i.*, snippet(issues_fts, -1, ?, ?, '…', 16) AS snip"
+        " FROM issues_fts JOIN issues i ON i.id = issues_fts.rowid"
+        " WHERE issues_fts MATCH ?"
+    )
+    if where:
+        sql += " AND " + " AND ".join(where)
+    sql += " ORDER BY bm25(issues_fts, 10.0, 3.0, 1.0), i.id LIMIT ?"
+    rows = conn.execute(
+        sql, [MATCH_START, MATCH_END, match, *params, limit]
+    ).fetchall()
+    return [(_issue_from_row(conn, r), str(r["snip"])) for r in rows]
 
 
 def get_events(conn: sqlite3.Connection, issue_id: int) -> list[Event]:
