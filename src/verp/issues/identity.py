@@ -22,7 +22,10 @@ ENV_WORKER = "VERP_WORKER"
 
 
 def _cwd_project() -> str | None:
-    cwd = Path.cwd().resolve()
+    try:
+        cwd = Path.cwd().resolve()
+    except FileNotFoundError:
+        return None
     for p in [cwd, *cwd.parents]:
         if is_project_dir(p):
             return p.name

@@ -359,10 +359,12 @@ def cmd_delete() -> int:
                 if answer != "y":
                     return 1
 
+    # Resolve before removal: the cwd may be inside project_dir.
+    caller = resolve_caller()
     subprocess.run(["rm", "-rf", str(project_dir)], check=True)
     delete_project(name)
     print(f"deleted '{name}'")
-    released = release_project_issues(name, resolve_caller())
+    released = release_project_issues(name, caller)
     if released:
         n = len(released)
         print(f"released {n} issue{'s' if n != 1 else ''} to the backlog")
