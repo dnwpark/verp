@@ -13,6 +13,7 @@ TERMINAL_EMULATORS = frozenset(
         "wezterm-gui",
         "kitty",
         "iTerm2",
+        "ghostty",
         "Terminal",
         "gnome-terminal-server",
         "alacritty",
@@ -53,12 +54,14 @@ def focus_by_tty(tty: str, terminal: "TerminalInfo | None" = None) -> bool:
     from verp.focus._focusers._wezterm import WeztermFocuser
     from verp.focus._focusers._kitty import KittyFocuser
     from verp.focus._focusers._iterm2 import ITermFocuser
+    from verp.focus._focusers._ghostty import GhosttyFocuser
     from verp.focus._focusers._tmux import TmuxFocuser
 
     focusers: list[TerminalFocuser] = [
         WeztermFocuser(),
         KittyFocuser(terminal=terminal),
         ITermFocuser(terminal=terminal),
+        GhosttyFocuser(terminal=terminal),
         TmuxFocuser(),
     ]
 

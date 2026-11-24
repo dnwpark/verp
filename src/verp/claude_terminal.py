@@ -78,7 +78,8 @@ _CTRL_BACKSLASH_ITERM2 = (
 def _build_jump_sequences() -> list[bytes]:
     sequences: list[bytes] = [_CTRL_BACKSLASH]
     terminal = _terminal_info()
-    if terminal and terminal.app == "kitty":
+    # Ghostty also implements the kitty keyboard protocol.
+    if terminal and terminal.app.lower() in ("kitty", "ghostty"):
         sequences.append(_CTRL_BACKSLASH_KITTY)
     elif terminal and terminal.app == "iTerm.app":
         sequences.append(_CTRL_BACKSLASH_ITERM2)

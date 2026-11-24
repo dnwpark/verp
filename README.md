@@ -168,6 +168,7 @@ Press `Ctrl+\` in any `verp claude` session to focus a running monitor window. F
 | Apple Terminal | ✓ |
 | iTerm2 | ✓ |
 | kitty | ✓\* |
+| Ghostty | ✓ (1.4+) |
 
 \* kitty requires `allow_remote_control yes` in kitty.conf for per-window focus. verp adds this automatically on first `verp claude` run inside kitty.
 

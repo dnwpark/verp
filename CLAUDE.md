@@ -33,6 +33,7 @@ When adding or removing anything stored in `DATA_DIR`, update the Data section i
   - `__init__.py` — public API: `focus_by_tty(tty)`, `pid_to_tty(pid)`
   - `_base.py` — `TerminalFocuser` protocol
   - `_proc.py` — shared constants (`TERMINAL_EMULATORS`), `pid_to_tty`, and focuser dispatch
+  - `_focusers/_ghostty.py` — Ghostty (1.4+) AppleScript focuser, matching terminals by TTY
   - `_focusers/_iterm2.py` — iTerm2 AppleScript focuser
   - `_focusers/_kitty.py` — kitty remote control focuser
   - `_focusers/_linux_x11.py` — Linux X11 focuser via ewmh/xdotool
