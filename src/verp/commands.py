@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -90,6 +91,21 @@ def get_current_worktree() -> Worktree | None:
     return None
 
 
+def _rollback_worktrees(
+    branch: str, created: list[tuple[Path, Path, bool]]
+) -> None:
+    """Undo worktree_add calls: remove worktrees (including partially created
+    ones), prune stale metadata, and delete branches that did not exist before.
+    """
+    for rp, worktree_dir, had_branch in reversed(created):
+        worktree_remove(rp, worktree_dir)
+        if worktree_dir.exists():
+            shutil.rmtree(worktree_dir, ignore_errors=True)
+        worktree_prune(rp)
+        if not had_branch and branch_exists(rp, branch):
+            branch_delete(rp, branch)
+
+
 def cmd_new(name: str, repos: list[str]) -> int:
     name = name.strip("/")
     if "/" in name:
@@ -118,20 +134,20 @@ def cmd_new(name: str, repos: list[str]) -> int:
     project_dir.mkdir(parents=True)
     print(f"created {project_dir}")
 
-    worktrees: list[str] = []
+    created: list[tuple[Path, Path, bool]] = []
     for repo, rp in zip(repos, repo_paths):
         worktree_dir = project_dir / repo
+        had_branch = branch_exists(rp, branch)
         result = worktree_add(rp, branch, worktree_dir)
+        created.append((rp, worktree_dir, had_branch))
         if result.returncode != 0:
             err(
                 f"failed to create worktree for '{repo}':\n{result.stderr.strip()}"
             )
-            for done_repo in worktrees:
-                worktree_remove(REPO_DIR / done_repo, project_dir / done_repo)
-            project_dir.rmdir()
+            _rollback_worktrees(branch, created)
+            shutil.rmtree(project_dir, ignore_errors=True)
             return 1
         print(f"  {repo}: worktree at {worktree_dir} (branch {branch})")
-        worktrees.append(repo)
 
     project_info = ProjectInfo(
         name=name,
@@ -168,16 +184,20 @@ def cmd_add(repos: list[str]) -> int:
             return 1
         repo_paths.append(rp)
 
+    created: list[tuple[Path, Path, bool]] = []
     added: list[str] = []
     for repo, rp in zip(repos, repo_paths):
         worktree_dir = project_dir / repo
+        had_branch = branch_exists(rp, project_info.branch)
         result = worktree_add(rp, project_info.branch, worktree_dir)
+        created.append((rp, worktree_dir, had_branch))
         if result.returncode != 0:
             err(
                 f"failed to create worktree for '{repo}':\n{result.stderr.strip()}"
             )
+            _rollback_worktrees(project_info.branch, created)
             for done_repo in added:
-                worktree_remove(REPO_DIR / done_repo, project_dir / done_repo)
+                remove_repo_from_project(name, done_repo)
             return 1
         print(
             f"{repo}: worktree at {worktree_dir} (branch {project_info.branch})"
@@ -578,8 +598,6 @@ def cmd_repo_unclone(repo: str) -> int:
     if using:
         err(f"repo '{repo}' is used by project(s): {', '.join(using)}")
         return 1
-    import shutil
-
     shutil.rmtree(rp)
     print(f"removed {rp}")
     return 0
